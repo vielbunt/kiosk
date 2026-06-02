@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>vielbunt Kiosk</title>
+    <script src="https://cdn.jsdelivr.net/npm/rrule@2.7.2/dist/es5/rrule.min.js"></script>
+    <style>
+        /* CSS reset & layout */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #DB3966;
+            /* Match canvas background for non 16:9 screens */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Cera Pro', sans-serif;
+        }
+
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+            max-width: 177.78vh;
+            /* 16/9 * 100vh */
+            max-height: 56.25vw;
+            /* 9/16 * 100vw */
+            background-color: #DB3966;
+            position: relative;
+            /* box-shadow removed as requested */
+            overflow: hidden;
+            container-type: size;
+            /* Enable container queries for responsive internal sizing */
+        }
+
+        #canvas.full-window {
+            max-width: none;
+            max-height: none;
+        }
+
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+            /* Remove padding here to allow sticky edges on sharepics */
+            will-change: opacity;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
+        }
+
+        .slide.active {
+            opacity: 1;
+        }
+
+        body.no-animation .slide {
+            transition: none !important;
+        }
+
+        .slide-content-wrapper {
+            /* General padding for slides that aren't sharepics */
+            padding: 5cqh 5cqw;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+            flex-direction: column;
+        }
+
+        /* Loading Slide */
+        .loading-text {
+            color: white;
+            font-size: 5cqw;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Config Flags */
+        :root {
+            --rounded-corners: 0cqw;
+            /* Set to 1cqw to enable rounded corners */
+        }
+
+        /* Sharepic Layouts */
+        .sharepics {
+            display: flex;
+            justify-content: space-between;
+            /* push to sides if multiple */
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .sharepics img {
+            height: 100%;
+            /* Full height */
+            /* Width adjusts automatically to preserve aspect ratio, restricted by object-fit */
+            max-width: 50%;
+            /* Ensure two images fit without squishing */
+            object-fit: contain;
+            box-shadow: 15px 15px 35px rgba(0, 0, 0, 0.4);
+            border-radius: var(--rounded-corners);
+        }
+
+        .sharepics.single {
+            justify-content: center;
+        }
+
+        .sharepics.single img {
+            max-width: 100%;
+            height: 100%;
+        }
+
+        /* Logo Slide */
+        .logo-slide img {
+            max-width: 80cqw;
+            max-height: 80cqh;
+            object-fit: contain;
+        }
+
+        /* Events Slide */
+        .events-slide h1 {
+            font-size: 4cqw;
+            margin-top: 2cqh;
+            margin-bottom: 2cqh;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            color: white;
+        }
+
+        .event-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1cqh;
+            width: 85cqw;
+            color: white;
+        }
+
+        .event-item {
+            display: flex;
+            flex-direction: row;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 1.5cqh 2cqw;
+            border-radius: 1.5cqw;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            align-items: center;
+        }
+
+        .event-date {
+            font-size: 2.5cqw;
+            font-weight: bold;
+            width: 18cqw;
+            padding-right: 2cqw;
+            margin-right: 2cqw;
+            border-right: 2px solid rgba(255, 255, 255, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .event-details {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            flex: 1;
+        }
+
+        .event-title {
+            font-size: 2.5cqw;
+            font-weight: bold;
+            margin-bottom: 0;
+        }
+
+        .event-time {
+            font-size: 2cqw;
+            white-space: nowrap;
+            opacity: 0.9;
+        }
+
+        /* Truly Compact Mode Events */
+        .events-slide.compact h1 {
+            font-size: 3cqw;
+            margin-top: 1.5cqh;
+            margin-bottom: 1.5cqh;
+        }
+
+        .events-slide.compact .event-list {
+            gap: 0.5cqh;
+        }
+
+        .events-slide.compact .event-item {
+            padding: 1cqh 1.5cqw;
+            border-radius: 1cqw;
+        }
+
+        .events-slide.compact .event-date {
+            font-size: 1.8cqw;
+            width: 15cqw;
+            padding-right: 1.5cqw;
+            margin-right: 1.5cqw;
+        }
+
+        .events-slide.compact .event-title {
+            font-size: 1.8cqw;
+        }
+
+        .events-slide.compact .event-time {
+            font-size: 1.5cqw;
+        }
+        /* Mitmachen Slide */
+        .mitmachen-slide {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: white;
+            padding: 5cqw;
+            gap: 3cqh;
+        }
+
+        .mitmachen-slide .mitmachen-text {
+            font-size: 5.5cqw;
+            font-weight: bold;
+            line-height: 1.3;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
+            max-width: 80cqw;
+        }
+
+        .mitmachen-slide .mitmachen-url {
+            font-size: 4cqw;
+            font-weight: bold;
+            opacity: 0.9;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 1.5cqh 4cqw;
+            border-radius: 2cqw;
+            letter-spacing: 0.05em;
+        }
+
+        /* Disco Mode Styles */
+        body.disco-mode, #canvas.disco-mode {
+            animation: discoBg 1.5s infinite;
+        }
+
+        @keyframes discoBg {
+            0% { background-color: #DB3966; }
+            16% { background-color: #ff0055; }
+            33% { background-color: #9900ff; }
+            50% { background-color: #00ccff; }
+            66% { background-color: #00ff00; }
+            83% { background-color: #ffff00; }
+            100% { background-color: #ff8800; }
+        }
+
+        .glitter {
+            position: absolute;
+            background-color: white;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10000;
+            animation: twinkle linear infinite;
+        }
+
+        @keyframes twinkle {
+            0% { opacity: 0; transform: scale(0.2) rotate(0deg); }
+            50% { opacity: 1; transform: scale(1.5) rotate(180deg); }
+            100% { opacity: 0; transform: scale(0.2) rotate(360deg); }
+        }
+
+        .flash-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 9998;
+            background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 70%);
+            animation: strobe 0.4s infinite alternate;
+            mix-blend-mode: overlay;
+        }
+
+        @keyframes strobe {
+            0% { opacity: 0; transform: scale(1); }
+            100% { opacity: 1; transform: scale(1.5); }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="canvas">
+        <div id="slides-container">
+            <!-- Loading Slide -->
+            <div class="slide active">
+                <div class="slide-content-wrapper">
+                    <h1 class="loading-text">Lade Inhalte...</h1>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const WP_API_URL = 'https://www.vielbunt.org/wp-json/wp/v2/posts';
+        const ICS_URL = 'https://calendar.google.com/calendar/ical/vielbunt.org_9dumkl9hgmdsf22bvi3vb7du78%40group.calendar.google.com/private-013fe0c849d9583baa62c544041996a4/basic.ics';
+
+        let slidesData = [];
+        let currentSlideIndex = 0;
+
+        async function init() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const isCompact = urlParams.has('compact_mode') || urlParams.get('mode') === 'compact';
+                const isMitmachen = urlParams.has('mitmachen') || urlParams.get('mode') === 'mitmachen';
+                const eventsOnly = isCompact || urlParams.has('events_only') || urlParams.get('mode') === 'events';
+                const isDisco = urlParams.get('disco') === 'true' || urlParams.has('disco');
+                const noAnimation = urlParams.has('no_animation') || urlParams.get('animation') === 'false' || urlParams.has('no_fade');
+
+                if (isDisco) {
+                    startDisco();
+                }
+
+                if (noAnimation) {
+                    document.body.classList.add('no-animation');
+                }
+
+                if (isCompact) {
+                    document.getElementById('canvas').classList.add('full-window');
+                }
+
+                if (eventsOnly) {
+                    document.getElementById('slides-container').innerHTML = `<div class="slide active"><div class="slide-content-wrapper"><h1 class="loading-text">Lade Termine...</h1></div></div>`;
+                    const events = await fetchEvents(isCompact);
+                    buildSlides([], events, true, isCompact, isMitmachen);
+                } else {
+                    const [posts, events] = await Promise.all([
+                        fetchPosts(),
+                        fetchEvents(false)
+                    ]);
+
+                    buildSlides(posts, events, false, false, isMitmachen);
+                }
+                
+                startSlideshow();
+            } catch (error) {
+                console.error('Fehler beim Initialisieren:', error);
+                document.getElementById('slides-container').innerHTML = `<div class="slide active"><h1 class="loading-text">Fehler beim Laden der Inhalte.</h1></div>`;
+            }
+        }
+
+        async function fetchPosts() {
+            const today = new Date();
+            const threeWeeksAgo = new Date();
+            threeWeeksAgo.setDate(today.getDate() - 21);
+            const isoString = threeWeeksAgo.toISOString();
+
+            const response = await fetch(`${WP_API_URL}?after=${isoString}&per_page=100&_fields=title,content`);
+            if (!response.ok) throw new Error('WP API fetch failed');
+            const posts = await response.json();
+
+            const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+            const slidePosts = [];
+
+            posts.forEach(post => {
+                const rawTitle = post.title?.rendered || '';
+
+                // Skip cancelled events
+                if (/abgesagt/i.test(rawTitle)) return;
+
+                let sortDate = new Date(post.date);
+
+                // Try to parse event date or range from title
+                // Support TT.MM. or TT.MM.YYYY, optionally with ranges (TT.MM. - TT.MM.)
+                // Now supports different dash types (-, –, —) and look anywhere in the title
+                const dateRegex = /(\d{2})\.(\d{2})\.(?:(\d{4}))?(?:\s*[–\—\-]\s*(\d{2})\.(\d{2})\.(?:(\d{4}))?)?/;
+                const rangeMatch = rawTitle.match(dateRegex);
+                
+                if (rangeMatch) {
+                    // Use end date if it's a range (group 4 & 5), otherwise start date (group 1 & 2)
+                    const day = parseInt(rangeMatch[4] || rangeMatch[1], 10);
+                    const month = parseInt(rangeMatch[5] || rangeMatch[2], 10) - 1;
+                    const yearInTitle = rangeMatch[6] || rangeMatch[3];
+                    
+                    let year;
+                    if (yearInTitle) {
+                        year = parseInt(yearInTitle, 10);
+                    } else {
+                        year = today.getFullYear();
+                        const eventDateThisYear = new Date(year, month, day);
+                        if (eventDateThisYear < startOfToday) {
+                            const daysPast = (startOfToday - eventDateThisYear) / (1000 * 60 * 60 * 24);
+                            if (daysPast > 180) {
+                                year += 1;
+                            }
+                        }
+                    }
+                    const eventDate = new Date(year, month, day);
+                    if (eventDate < startOfToday) return; // skip past events
+                    sortDate = eventDate; // Use event date for sorting if present
+                }
+                // Posts without a parseable date use their publish date as sortDate
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(post.content.rendered, 'text/html');
+                const images = Array.from(doc.querySelectorAll('img')).map(img => img.src);
+
+                if (images.length > 0) {
+                    const firstImage = images[0];
+                    const lastImage = images[images.length - 1];
+
+                    if (images.length === 1) {
+                        slidePosts.push({ type: 'sharepics', images: [firstImage], sortDate });
+                    } else {
+                        slidePosts.push({ type: 'sharepics', images: [firstImage, lastImage], sortDate });
+                    }
+                }
+            });
+
+            // Sort by date ascending (soonest event/newest post first)
+            return slidePosts.sort((a, b) => a.sortDate - b.sortDate);
+        }
+
+        async function fetchEvents(isCompact = false) {
+            // Fetch using Codetabs proxy to avoid CORS hanging
+            // Added fallback to corsproxy if codetabs fails
+            let textData = '';
+            try {
+                const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(ICS_URL)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error('Codetabs proxy fetch failed');
+                textData = await response.text();
+            } catch (e) {
+                console.warn(e);
+                // Fallback to allorigins raw
+                const proxyUrlFallback = `https://api.allorigins.win/raw?url=${encodeURIComponent(ICS_URL)}`;
+                const responseFallback = await fetch(proxyUrlFallback);
+                if (!responseFallback.ok) throw new Error('All proxy fetches failed');
+                textData = await responseFallback.text();
+            }
+            
+            console.log("Raw ICS data snippet:", textData.substring(0, 200));
+            
+            const events = parseICS(textData, isCompact);
+            console.log("Parsed future events:", events);
+            return events;
+        }
+
+        function parseICS(icsData, isCompact = false) {
+            // Handle ICS line folding (a newline followed by a space or tab is a continuation of the previous line)
+            const unfoldedData = icsData.replace(/\r?\n[ \t]/g, '');
+            const lines = unfoldedData.split(/\r?\n/);
+
+            const allEvents = [];
+            let currentEvent = null;
+
+            lines.forEach(line => {
+                if (line.startsWith('BEGIN:VEVENT')) {
+                    currentEvent = {};
+                } else if (line.startsWith('END:VEVENT')) {
+                    if (currentEvent) {
+                        allEvents.push(currentEvent);
+                        currentEvent = null;
+                    }
+                } else if (currentEvent) {
+                    if (line.startsWith('SUMMARY:')) {
+                        currentEvent.summary = line.substring(8);
+                    } else if (line.startsWith('DTSTART')) {
+                        const dateStr = line.split(':')[1];
+                        currentEvent.start = parseICSDate(dateStr);
+                    } else if (line.startsWith('DTEND')) {
+                        const dateStr = line.split(':')[1];
+                        currentEvent.end = parseICSDate(dateStr);
+                    } else if (line.startsWith('RRULE:')) {
+                        currentEvent.rrule = line.substring(6);
+                    } else if (line.startsWith('EXDATE')) {
+                        const dateStr = line.split(':')[1];
+                        if (!currentEvent.exdates) currentEvent.exdates = [];
+                        currentEvent.exdates.push(parseICSDate(dateStr).getTime());
+                    }
+                }
+            });
+
+            // Filter for future events
+            const now = new Date();
+            // To ensure we show events happening today as well, we consider start time after midnight today
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const maxDays = new Date(now.getTime() + 365 * 2 * 24 * 60 * 60 * 1000); // look up to 2 years ahead
+            
+            const upcomingEvents = [];
+
+            allEvents.forEach(e => {
+                if (!e.start) return;
+
+                if (e.rrule && window.rrule) {
+                    try {
+                        const duration = e.end ? (e.end.getTime() - e.start.getTime()) : 0;
+                        const rule = rrule.rrulestr(e.rrule, { dtstart: e.start });
+                        const instances = rule.between(startOfDay, maxDays, true);
+                        
+                        instances.forEach(date => {
+                            if (e.exdates && e.exdates.includes(date.getTime())) return;
+                            upcomingEvents.push({
+                                summary: e.summary,
+                                start: date,
+                                end: new Date(date.getTime() + duration)
+                            });
+                        });
+                    } catch (err) {
+                        console.error('Failed to parse RRULE', e.rrule, err);
+                    }
+                } else {
+                    if (e.start >= startOfDay && e.start <= maxDays) {
+                        if (e.exdates && e.exdates.includes(e.start.getTime())) return;
+                        upcomingEvents.push(e);
+                    }
+                }
+            });
+
+            const limit = isCompact ? 100 : 8;
+            return upcomingEvents
+                .sort((a, b) => a.start - b.start)
+                .slice(0, limit); // Take next N events so they fit on the slide
+        }
+
+        function parseICSDate(icsDateString) {
+            // Valid formats: YYYYMMDDTHHMMSSZ, YYYYMMDDTHHMMSS, or YYYYMMDD
+            if (!icsDateString) return new Date();
+
+            const y = parseInt(icsDateString.substr(0, 4), 10);
+            const m = parseInt(icsDateString.substr(4, 2), 10) - 1;
+            const d = parseInt(icsDateString.substr(6, 2), 10);
+
+            if (icsDateString.length === 8) {
+                // All day event
+                return new Date(y, m, d);
+            }
+
+            const h = parseInt(icsDateString.substr(9, 2), 10) || 0;
+            const min = parseInt(icsDateString.substr(11, 2), 10) || 0;
+            const s = parseInt(icsDateString.substr(13, 2), 10) || 0;
+
+            if (icsDateString.endsWith('Z')) {
+                return new Date(Date.UTC(y, m, d, h, min, s));
+            } else {
+                return new Date(y, m, d, h, min, s);
+            }
+        }
+
+        function formatDate(date) {
+            return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        function formatTime(date) {
+            return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function buildSlides(posts, events, eventsOnly = false, isCompact = false, isMitmachen = false) {
+            const container = document.getElementById('slides-container');
+            container.innerHTML = ''; // clear loading
+
+            if (!eventsOnly) {
+                // 1. Sharepic Slides
+                posts.forEach(post => {
+                    const slide = document.createElement('div');
+                    slide.className = 'slide';
+
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'sharepics ' + (post.images.length === 1 ? 'single' : '');
+
+                    post.images.forEach(imgSrc => {
+                        const img = document.createElement('img');
+                        img.src = imgSrc;
+                        wrapper.appendChild(img);
+                    });
+
+                    slide.appendChild(wrapper);
+                    container.appendChild(slide);
+                });
+            }
+
+            if (!eventsOnly) {
+                // 2. Logo Slide
+                // Using placeholder logic: wait for local "logo.png". 
+                // The SVG data URI is purely a fallback if logo.png doesn't exist yet!
+                const logoSlide = document.createElement('div');
+                logoSlide.className = 'slide';
+                logoSlide.innerHTML = `
+                <div class="slide-content-wrapper logo-slide">
+                    <svg width="60cqw" height="60cqh" viewBox="0 0 658 432" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+                        <g transform="matrix(1,0,0,1,-1.126628,0)">
+                            <g id="vielbunt_logo_full_RGB" transform="matrix(1,0,0,1,1.126628,0)">
+                                <rect x="0" y="0" width="657.505" height="431.145" style="fill:none;"/>
+                                <g id="text" transform="matrix(3.180582,0,0,2.937619,-1873.83933,-139.37582)">
+                                    <g transform="matrix(45.664868,0,0,49.4417,611.7539,168.551628)">
+                                        <path d="M0.404,-0.495L0.279,-0.215L0.154,-0.495L0.012,-0.495L0.257,0.012L0.302,0.012L0.547,-0.495L0.404,-0.495Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g transform="matrix(45.664868,0,0,49.4417,635.453966,168.551628)">
+                                        <path d="M0.134,-0.592C0.182,-0.592 0.221,-0.628 0.221,-0.675C0.221,-0.723 0.182,-0.759 0.134,-0.759C0.086,-0.759 0.048,-0.723 0.048,-0.675C0.048,-0.628 0.086,-0.592 0.134,-0.592ZM0.067,-0L0.202,-0L0.202,-0.495L0.067,-0.495L0.067,-0Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g transform="matrix(45.664868,0,0,49.4417,645.454573,168.551628)">
+                                        <path d="M0.531,-0.276C0.531,-0.404 0.437,-0.506 0.298,-0.506C0.152,-0.506 0.039,-0.393 0.039,-0.247C0.039,-0.101 0.153,0.012 0.31,0.012C0.386,0.012 0.452,-0.015 0.508,-0.062L0.452,-0.154C0.412,-0.123 0.368,-0.104 0.314,-0.104C0.242,-0.104 0.191,-0.139 0.175,-0.202L0.522,-0.202C0.526,-0.219 0.531,-0.248 0.531,-0.276ZM0.293,-0.397C0.35,-0.397 0.399,-0.36 0.4,-0.297L0.175,-0.297C0.19,-0.359 0.236,-0.397 0.293,-0.397Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g transform="matrix(45.664868,0,0,49.4417,669.611288,168.551628)">
+                                        <rect x="0.067" y="-0.75" width="0.135" height="0.75" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g transform="matrix(45.664868,0,0,49.4417,679.611894,168.551628)">
+                                        <path d="M0.35,-0.506C0.288,-0.506 0.237,-0.485 0.202,-0.447L0.202,-0.75L0.067,-0.75L0.067,-0L0.191,-0L0.191,-0.061C0.225,-0.015 0.282,0.012 0.35,0.012C0.49,0.012 0.59,-0.098 0.59,-0.247C0.59,-0.396 0.49,-0.506 0.35,-0.506ZM0.325,-0.111C0.263,-0.111 0.2,-0.152 0.2,-0.247C0.2,-0.341 0.262,-0.384 0.325,-0.384C0.395,-0.384 0.453,-0.332 0.453,-0.248C0.453,-0.164 0.396,-0.111 0.325,-0.111Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g transform="matrix(45.664868,0,0,49.4417,706.051852,168.551628)">
+                                        <path d="M0.291,0.012C0.42,0.012 0.518,-0.078 0.518,-0.218L0.518,-0.495L0.383,-0.495L0.383,-0.207C0.383,-0.149 0.342,-0.112 0.291,-0.112C0.238,-0.112 0.197,-0.149 0.197,-0.207L0.197,-0.495L0.062,-0.495L0.062,-0.218C0.062,-0.078 0.16,0.012 0.291,0.012Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g transform="matrix(45.664868,0,0,49.4417,730.254232,168.551628)">
+                                        <path d="M0.336,-0.506C0.275,-0.506 0.225,-0.484 0.191,-0.45L0.191,-0.495L0.067,-0.495L0.067,-0L0.202,-0L0.202,-0.289C0.202,-0.346 0.241,-0.385 0.296,-0.385C0.351,-0.385 0.388,-0.346 0.388,-0.289L0.388,-0L0.522,-0L0.522,-0.307C0.522,-0.426 0.452,-0.506 0.336,-0.506Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g transform="matrix(45.664868,0,0,49.4417,755.141585,168.551628)">
+                                        <path d="M0.321,-0.109C0.259,-0.109 0.229,-0.129 0.229,-0.186L0.229,-0.381L0.369,-0.381L0.369,-0.495L0.229,-0.495L0.229,-0.62L0.094,-0.62L0.094,-0.495L0.016,-0.495L0.016,-0.381L0.094,-0.381L0.094,-0.174C0.094,-0.047 0.17,0.012 0.292,0.012C0.327,0.012 0.357,0.007 0.385,-0L0.385,-0.113C0.359,-0.111 0.337,-0.109 0.321,-0.109Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                </g>
+                                <g id="rainbow" transform="matrix(1,0,0,1,-85.900506,-28.731022)">
+                                    <g id="Purple" transform="matrix(1.386102,0,0,1.386102,542.493836,201.828884)">
+                                        <path d="M0,-5.832C0,-14.223 -6.685,-21.029 -14.925,-21.029C-23.168,-21.029 -29.852,-14.223 -29.852,-5.832L-29.852,26.791L0,26.791L0,-5.832Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g id="Blue" transform="matrix(1.386102,0,0,1.386102,488.855225,199.267897)">
+                                        <path d="M0,-29.63C0,-38.023 -6.686,-44.829 -14.926,-44.829C-23.17,-44.829 -29.853,-38.023 -29.853,-29.63L-29.853,28.639L0,28.639L0,-29.63Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g id="Green" transform="matrix(1.386102,0,0,1.386102,435.407268,196.756314)">
+                                        <path d="M0,-53.796C0,-62.189 -6.684,-68.995 -14.925,-68.995C-23.166,-68.995 -29.851,-62.189 -29.851,-53.796L-29.851,30.451L0,30.451L0,-53.796Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g id="Yellow" transform="matrix(1.386102,0,0,1.386102,381.830496,199.267897)">
+                                        <path d="M0,-29.63C0,-38.023 -6.686,-44.829 -14.926,-44.829C-23.17,-44.829 -29.853,-38.023 -29.853,-29.63L-29.853,28.639L0,28.639L0,-29.63Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                    <g id="Red" transform="matrix(1.386102,0,0,1.386102,328.190498,201.828884)">
+                                        <path d="M0,-5.832C0,-14.223 -6.685,-21.029 -14.925,-21.029C-23.168,-21.029 -29.852,-14.223 -29.852,-5.832L-29.852,26.791L0,26.791L0,-5.832Z" style="fill:white;fill-rule:nonzero;"/>
+                                    </g>
+                                </g>
+                            </g>
+                        </g>
+                    </svg>
+                </div>`;
+                container.appendChild(logoSlide);
+            }
+
+            // 3. Events Slide
+            if (events.length > 0) {
+                const eventSlide = document.createElement('div');
+                eventSlide.className = 'slide';
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'slide-content-wrapper events-slide';
+                if (isCompact) {
+                    wrapper.classList.add('compact');
+                }
+                wrapper.style.justifyContent = 'flex-start';
+
+                const title = document.createElement('h1');
+                title.textContent = 'Nächste Termine von vielbunt:';
+                wrapper.appendChild(title);
+
+                const list = document.createElement('div');
+                list.className = 'event-list';
+
+                wrapper.appendChild(list);
+                eventSlide.appendChild(wrapper);
+                container.appendChild(eventSlide);
+
+                // Insert all event items into the DOM first
+                for (const e of events) {
+                    const item = document.createElement('div');
+                    item.className = 'event-item';
+
+                    const timeString = (e.start.getHours() !== 0 || e.start.getMinutes() !== 0)
+                        ? `${formatTime(e.start)} Uhr`
+                        : 'Ganztägig';
+
+                    item.innerHTML = `
+                        <div class="event-date">${formatDate(e.start)}</div>
+                        <div class="event-details">
+                            <div class="event-title">${e.summary || 'Termin'}</div>
+                            <div class="event-time">${timeString}</div>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                }
+
+                // In compact mode: after the browser has done layout, trim items that overflow.
+                // We use requestAnimationFrame twice to ensure styles are fully applied.
+                if (isCompact) {
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        // Use the title's top offset as the bottom margin (symmetric spacing)
+                        const titleRect = title.getBoundingClientRect();
+                        const marginToKeep = titleRect.top > 0 ? titleRect.top : (window.innerHeight * 0.02);
+                        const maxAllowedBottom = window.innerHeight - marginToKeep;
+
+                        const items = Array.from(list.querySelectorAll('.event-item'));
+                        for (const item of items) {
+                            const rect = item.getBoundingClientRect();
+                            if (rect.bottom > maxAllowedBottom) {
+                                list.removeChild(item);
+                            }
+                        }
+                    }));
+                }
+            }
+
+            slidesData = document.querySelectorAll('.slide');
+            if (slidesData.length > 0) {
+                slidesData[0].classList.add('active');
+            }
+
+            // 4. Mitmachen Slide (optional, if mode=mitmachen)
+            if (isMitmachen) {
+                const mitmachenSlide = document.createElement('div');
+                mitmachenSlide.className = 'slide';
+                mitmachenSlide.innerHTML = `
+                    <div class="slide-content-wrapper mitmachen-slide">
+                        <div class="mitmachen-text">Dir gefällt, was du hier bei vielbunt siehst?<br>Dann mach' bei uns mit!</div>
+                        <div class="mitmachen-url">vielbunt.org/mitmachen</div>
+                    </div>`;
+                container.appendChild(mitmachenSlide);
+            }
+
+            slidesData = document.querySelectorAll('.slide');
+            if (slidesData.length > 0) {
+                slidesData[0].classList.add('active');
+            }
+        }
+
+        let slideInterval;
+
+        function startSlideshow() {
+            if (slidesData.length <= 1) return; // No slideshow needed if somehow 1 or 0 slides
+
+            slideInterval = setInterval(() => {
+                nextSlide();
+            }, 15000); // 15 seconds rotation
+
+            // Allow arrow keys to skip
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight') {
+                    resetTimer();
+                    nextSlide();
+                } else if (e.key === 'ArrowLeft') {
+                    resetTimer();
+                    prevSlide();
+                }
+            });
+        }
+
+        function nextSlide() {
+            if (slidesData.length <= 0) return;
+            slidesData[currentSlideIndex].classList.remove('active');
+            currentSlideIndex = (currentSlideIndex + 1) % slidesData.length;
+            slidesData[currentSlideIndex].classList.add('active');
+        }
+
+        function prevSlide() {
+            if (slidesData.length <= 0) return;
+            slidesData[currentSlideIndex].classList.remove('active');
+            currentSlideIndex = (currentSlideIndex - 1 + slidesData.length) % slidesData.length;
+            slidesData[currentSlideIndex].classList.add('active');
+        }
+
+        function resetTimer() {
+            clearInterval(slideInterval);
+            slideInterval = setInterval(() => {
+                nextSlide();
+            }, 15000);
+        }
+
+        function startDisco() {
+            document.body.classList.add('disco-mode');
+            document.getElementById('canvas').classList.add('disco-mode');
+
+            // Flash overlay
+            const flashOverlay = document.createElement('div');
+            flashOverlay.className = 'flash-overlay';
+            document.body.appendChild(flashOverlay);
+
+            // Glitter
+            const colors = ['#FFF', '#FFD700', '#FF69B4', '#00FFFF', '#00FF00', '#FFA500', '#E0B0FF'];
+            for (let i = 0; i < 200; i++) {
+                const glitter = document.createElement('div');
+                glitter.className = 'glitter';
+                glitter.style.left = Math.random() * 100 + 'vw';
+                glitter.style.top = Math.random() * 100 + 'vh';
+                glitter.style.animationDuration = (Math.random() * 1.5 + 0.5) + 's';
+                glitter.style.animationDelay = (Math.random() * 2) + 's';
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                glitter.style.backgroundColor = color;
+                glitter.style.boxShadow = `0 0 10px ${color}, 0 0 20px ${color}`;
+                
+                const size = Math.random() * 6 + 2;
+                glitter.style.width = size + 'px';
+                glitter.style.height = size + 'px';
+                
+                document.body.appendChild(glitter);
+            }
+        }
+
+        // Run
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+
+</html>
