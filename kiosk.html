@@ -508,18 +508,37 @@
                     if (line.startsWith('SUMMARY:')) {
                         currentEvent.summary = line.substring(8);
                     } else if (line.startsWith('DTSTART')) {
-                        const dateStr = line.split(':')[1];
+                        const dateStr = line.split(':').pop();
                         currentEvent.start = parseICSDate(dateStr);
                     } else if (line.startsWith('DTEND')) {
-                        const dateStr = line.split(':')[1];
+                        const dateStr = line.split(':').pop();
                         currentEvent.end = parseICSDate(dateStr);
                     } else if (line.startsWith('RRULE:')) {
                         currentEvent.rrule = line.substring(6);
                     } else if (line.startsWith('EXDATE')) {
-                        const dateStr = line.split(':')[1];
+                        const dateStr = line.split(':').pop();
                         if (!currentEvent.exdates) currentEvent.exdates = [];
                         currentEvent.exdates.push(parseICSDate(dateStr).getTime());
+                    } else if (line.startsWith('CLASS:')) {
+                        currentEvent.cls = line.substring(6).trim();
+                    } else if (line.startsWith('UID:')) {
+                        currentEvent.uid = line.substring(4).trim();
+                    } else if (line.startsWith('RECURRENCE-ID')) {
+                        // Original slot this exception overrides in the parent series
+                        const dateStr = line.split(':').pop();
+                        currentEvent.recurrenceId = parseICSDate(dateStr);
                     }
+                }
+            });
+
+            // Build a map of UID → [original-slot timestamps] for all exception events.
+            // These slots must be suppressed when expanding the parent RRULE so the
+            // rescheduled/modified exception is not shown twice.
+            const recurrenceExceptions = {};
+            allEvents.forEach(e => {
+                if (e.recurrenceId && e.uid) {
+                    if (!recurrenceExceptions[e.uid]) recurrenceExceptions[e.uid] = [];
+                    recurrenceExceptions[e.uid].push(e.recurrenceId.getTime());
                 }
             });
 
@@ -528,20 +547,27 @@
             // To ensure we show events happening today as well, we consider start time after midnight today
             const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             const maxDays = new Date(now.getTime() + 365 * 2 * 24 * 60 * 60 * 1000); // look up to 2 years ahead
-            
+
             const upcomingEvents = [];
 
             allEvents.forEach(e => {
                 if (!e.start) return;
+
+                // Skip private and confidential events (Sichtbarkeit = vertraulich)
+                const cls = (e.cls || 'PUBLIC').toUpperCase();
+                if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL') return;
 
                 if (e.rrule && window.rrule) {
                     try {
                         const duration = e.end ? (e.end.getTime() - e.start.getTime()) : 0;
                         const rule = rrule.rrulestr(e.rrule, { dtstart: e.start });
                         const instances = rule.between(startOfDay, maxDays, true);
-                        
+                        const uidExceptions = (e.uid && recurrenceExceptions[e.uid]) || [];
+
                         instances.forEach(date => {
                             if (e.exdates && e.exdates.includes(date.getTime())) return;
+                            // Skip slots that are handled by a RECURRENCE-ID exception event
+                            if (uidExceptions.includes(date.getTime())) return;
                             upcomingEvents.push({
                                 summary: e.summary,
                                 start: date,
