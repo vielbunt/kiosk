@@ -434,23 +434,52 @@
             return slidePosts.sort((a, b) => a.sortDate - b.sortDate);
         }
 
-        async function fetchEvents(isCompact = false) {
-            // Fetch using Codetabs proxy to avoid CORS hanging
-            // Added fallback to corsproxy if codetabs fails
-            let textData = '';
+        async function fetchWithTimeout(url, timeoutMs = 10000) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeoutMs);
             try {
-                const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(ICS_URL)}`;
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error('Codetabs proxy fetch failed');
-                textData = await response.text();
-            } catch (e) {
-                console.warn(e);
-                // Fallback to allorigins raw
-                const proxyUrlFallback = `https://api.allorigins.win/raw?url=${encodeURIComponent(ICS_URL)}`;
-                const responseFallback = await fetch(proxyUrlFallback);
-                if (!responseFallback.ok) throw new Error('All proxy fetches failed');
-                textData = await responseFallback.text();
+                const response = await fetch(url, { signal: controller.signal });
+                return response;
+            } finally {
+                clearTimeout(id);
             }
+        }
+
+        async function fetchEvents(isCompact = false) {
+            const proxies = [
+                {
+                    // cors.io: returns JSON, ICS in `body` field
+                    url: `https://cors.io/?url=${encodeURIComponent(ICS_URL)}`,
+                    extract: async (r) => { const j = await r.json(); return j.body; }
+                },
+                {
+                    // allorigins raw: returns raw text
+                    url: `https://api.allorigins.win/raw?url=${encodeURIComponent(ICS_URL)}`,
+                    extract: async (r) => r.text()
+                },
+                {
+                    // codetabs: returns raw text (fallback in case service recovers)
+                    url: `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(ICS_URL)}`,
+                    extract: async (r) => r.text()
+                }
+            ];
+
+            let textData = '';
+            for (const proxy of proxies) {
+                try {
+                    const response = await fetchWithTimeout(proxy.url, 12000);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const text = await proxy.extract(response);
+                    if (!text || !text.includes('BEGIN:VCALENDAR')) throw new Error('Invalid ICS response');
+                    textData = text;
+                    console.log('ICS fetched via', proxy.url.split('?')[0]);
+                    break;
+                } catch (e) {
+                    console.warn('Proxy failed:', proxy.url.split('?')[0], e.message);
+                }
+            }
+
+            if (!textData) throw new Error('All proxy fetches failed');
             
             console.log("Raw ICS data snippet:", textData.substring(0, 200));
             
