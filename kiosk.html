@@ -251,6 +251,95 @@
             letter-spacing: 0.05em;
         }
 
+        /* Social Media Mode (4:5 ratio, matches sharepic brand style) */
+        #canvas.social-media {
+            max-width: 80vh;    /* 4:5: width = 4/5 × height */
+            max-height: 125vw;  /* 4:5: height = 5/4 × width */
+            background: white;
+        }
+
+        /* sm-slide uses absolute inset so it always fills the full canvas,
+           regardless of how the parent .slide flex container resolves height. */
+        .sm-slide {
+            position: absolute;
+            inset: 0;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sm-header {
+            background: #DB3966;
+            padding: 4.5cqw 5cqw 4cqw;
+            flex-shrink: 0;
+        }
+
+        .sm-header-title {
+            color: white;
+            font-size: 9.2cqw;
+            font-weight: bold;
+            line-height: 1.05;
+            margin: 0;
+            letter-spacing: -0.015em;
+        }
+
+        .sm-events {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            padding: 2cqw 5cqw;
+            overflow: hidden;
+        }
+
+        .sm-event {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 2.0cqw;
+        }
+
+        .sm-event-date {
+            display: inline-block;
+            background: #DB3966;
+            color: white;
+            font-size: 2.8cqw;
+            font-weight: bold;
+            padding: 0.5cqw 2.0cqw 0.45cqw;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .sm-event-title {
+            font-size: 4.5cqw;
+            font-weight: bold;
+            color: black;
+            line-height: 1.1;
+            margin: 0;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sm-footer {
+            background: #DB3966;
+            padding: 2cqw 5cqw;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .sm-footer-text {
+            color: white;
+            font-size: 3.2cqw;
+            font-weight: bold;
+            margin: 0;
+            letter-spacing: 0.05em;
+        }
+
         /* Disco Mode Styles */
         body.disco-mode, #canvas.disco-mode {
             animation: discoBg 1.5s infinite;
@@ -325,6 +414,7 @@
                 const urlParams = new URLSearchParams(window.location.search);
                 const isCompact = urlParams.has('compact_mode') || urlParams.get('mode') === 'compact';
                 const isMitmachen = urlParams.has('mitmachen') || urlParams.get('mode') === 'mitmachen';
+                const isSocialMedia = urlParams.get('mode') === 'socialmedia';
                 const eventsOnly = isCompact || urlParams.has('events_only') || urlParams.get('mode') === 'events';
                 const isDisco = urlParams.get('disco') === 'true' || urlParams.has('disco');
                 const noAnimation = urlParams.has('no_animation') || urlParams.get('animation') === 'false' || urlParams.has('no_fade');
@@ -341,6 +431,16 @@
                     document.getElementById('canvas').classList.add('full-window');
                 }
 
+                const isPoster = urlParams.get('poster') === 'true' || urlParams.has('poster');
+
+                if (isSocialMedia) {
+                    document.getElementById('slides-container').innerHTML = `<div class="slide active"><div class="slide-content-wrapper"><h1 class="loading-text">Lade Termine...</h1></div></div>`;
+                    const events = await fetchEvents(true);
+                    buildSocialMediaSlide(events, isPoster);
+                    // No slideshow — social media mode is a single static frame
+                    return;
+                }
+
                 if (eventsOnly) {
                     document.getElementById('slides-container').innerHTML = `<div class="slide active"><div class="slide-content-wrapper"><h1 class="loading-text">Lade Termine...</h1></div></div>`;
                     const events = await fetchEvents(isCompact);
@@ -353,7 +453,7 @@
 
                     buildSlides(posts, events, false, false, isMitmachen);
                 }
-                
+
                 startSlideshow();
             } catch (error) {
                 console.error('Fehler beim Initialisieren:', error);
@@ -619,8 +719,90 @@
             return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
         }
 
+        function formatDateShort(date) {
+            return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+        }
+
         function formatTime(date) {
             return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatWeekday(date) {
+            return ['So','Mo','Di','Mi','Do','Fr','Sa'][date.getDay()];
+        }
+
+        function getNextMonday() {
+            const d = new Date();
+            d.setHours(0, 0, 0, 0);
+            const day = d.getDay();
+            const daysUntil = day === 0 ? 1 : (8 - day) % 7 || 7;
+            d.setDate(d.getDate() + daysUntil);
+            return d;
+        }
+
+        function buildSocialMediaSlide(events, isPoster = false) {
+            document.getElementById('canvas').classList.add('social-media');
+            const container = document.getElementById('slides-container');
+            container.innerHTML = '';
+
+            if (isPoster) {
+                const nextMonday = getNextMonday();
+                events = events.filter(e => e.start >= nextMonday);
+            }
+
+            const slide = document.createElement('div');
+            slide.className = 'slide active';
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'sm-slide';
+
+            // Header
+            const header = document.createElement('div');
+            header.className = 'sm-header';
+            header.innerHTML = `<h1 class="sm-header-title">Nächste Termine<br>von vielbunt</h1>`;
+            wrapper.appendChild(header);
+
+            // Events list
+            const list = document.createElement('div');
+            list.className = 'sm-events';
+
+            events.slice(0, 10).forEach(e => {
+                const hasTime = e.start.getHours() !== 0 || e.start.getMinutes() !== 0;
+                const weekday = formatWeekday(e.start);
+                const datePart = formatDateShort(e.start);
+                const dateLabel = hasTime
+                    ? `${weekday} ${datePart} · ${formatTime(e.start)} Uhr`
+                    : `${weekday} ${datePart}`;
+
+                const row = document.createElement('div');
+                row.className = 'sm-event';
+                row.innerHTML = `
+                    <span class="sm-event-date">${dateLabel}</span>
+                    <p class="sm-event-title">${e.summary || 'Termin'}</p>`;
+                list.appendChild(row);
+            });
+
+            wrapper.appendChild(list);
+
+            // Footer
+            const footer = document.createElement('div');
+            footer.className = 'sm-footer';
+            footer.innerHTML = `<p class="sm-footer-text">Mehr Termine auf vielbunt.org</p>`;
+            wrapper.appendChild(footer);
+
+            slide.appendChild(wrapper);
+            container.appendChild(slide);
+            slidesData = document.querySelectorAll('.slide');
+
+            // Remove any events that overflow the list container
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                const listRect = list.getBoundingClientRect();
+                list.querySelectorAll('.sm-event').forEach(row => {
+                    if (row.getBoundingClientRect().bottom > listRect.bottom + 1) {
+                        row.remove();
+                    }
+                });
+            }));
         }
 
         function buildSlides(posts, events, eventsOnly = false, isCompact = false, isMitmachen = false) {
