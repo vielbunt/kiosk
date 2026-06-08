@@ -324,6 +324,10 @@
             text-overflow: ellipsis;
         }
 
+        .sm-event-title--internal {
+            color: #888;
+        }
+
         .sm-footer {
             background: #DB3966;
             padding: 2cqw 5cqw;
@@ -790,6 +794,13 @@
             const list = document.createElement('div');
             list.className = 'sm-events';
 
+            const INTERNAL_KEYWORDS = [
+                'Vorstandssitzung', 'Jugendvorstand',
+                'UAG', 'AG', 'UAK', 'AK', 'JV', 'HA', 'AKÖ'
+            ];
+            const isInternal = summary =>
+                INTERNAL_KEYWORDS.some(kw => summary.includes(kw));
+
             events.slice(0, 10).forEach(e => {
                 const hasTime = e.start.getHours() !== 0 || e.start.getMinutes() !== 0;
                 const weekday = formatWeekday(e.start);
@@ -797,12 +808,16 @@
                 const dateLabel = hasTime
                     ? `${weekday} ${datePart} · ${formatTime(e.start)} Uhr`
                     : `${weekday} ${datePart}`;
+                const summary = e.summary || 'Termin';
+                const titleClass = isInternal(summary)
+                    ? 'sm-event-title sm-event-title--internal'
+                    : 'sm-event-title';
 
                 const row = document.createElement('div');
                 row.className = 'sm-event';
                 row.innerHTML = `
                     <span class="sm-event-date">${dateLabel}</span>
-                    <p class="sm-event-title">${e.summary || 'Termin'}</p>`;
+                    <p class="${titleClass}">${summary}</p>`;
                 list.appendChild(row);
             });
 
