@@ -457,7 +457,7 @@
                 }
 
                 const isPoster = urlParams.get('poster') === 'true' || urlParams.has('poster');
-                const showLegend = urlParams.get('legend') === 'true' || urlParams.has('legend');
+                const showLegend = urlParams.get('legend') !== 'false';
 
                 if (isSocialMedia) {
                     document.getElementById('slides-container').innerHTML = `<div class="slide active"><div class="slide-content-wrapper"><h1 class="loading-text">Lade Termine...</h1></div></div>`;
