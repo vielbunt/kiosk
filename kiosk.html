@@ -328,6 +328,27 @@
             color: #888;
         }
 
+        .sm-legend {
+            flex-shrink: 0;
+            padding: 0 5cqw 1.8cqw;
+            display: flex;
+            align-items: center;
+            gap: 1.2cqw;
+        }
+
+        .sm-legend-swatch {
+            width: 2.2cqw;
+            height: 2.2cqw;
+            background: #888;
+            flex-shrink: 0;
+        }
+
+        .sm-legend-text {
+            font-size: 2.2cqw;
+            color: #888;
+            margin: 0;
+        }
+
         .sm-footer {
             background: #DB3966;
             padding: 2cqw 5cqw;
@@ -436,11 +457,12 @@
                 }
 
                 const isPoster = urlParams.get('poster') === 'true' || urlParams.has('poster');
+                const showLegend = urlParams.get('legend') === 'true' || urlParams.has('legend');
 
                 if (isSocialMedia) {
                     document.getElementById('slides-container').innerHTML = `<div class="slide active"><div class="slide-content-wrapper"><h1 class="loading-text">Lade Termine...</h1></div></div>`;
                     const events = await fetchEvents(true);
-                    buildSocialMediaSlide(events, isPoster);
+                    buildSocialMediaSlide(events, isPoster, showLegend);
                     // No slideshow — social media mode is a single static frame
                     return;
                 }
@@ -768,7 +790,7 @@
             return d;
         }
 
-        function buildSocialMediaSlide(events, isPoster = false) {
+        function buildSocialMediaSlide(events, isPoster = false, showLegend = false) {
             document.getElementById('canvas').classList.add('social-media');
             const container = document.getElementById('slides-container');
             container.innerHTML = '';
@@ -822,6 +844,18 @@
             });
 
             wrapper.appendChild(list);
+
+            // Legend (optional)
+            if (showLegend) {
+                const legend = document.createElement('div');
+                legend.className = 'sm-legend';
+                legend.innerHTML = `
+                    <span class="sm-legend-swatch" style="background:#000"></span>
+                    <p class="sm-legend-text" style="color:#000">Veranstaltung</p>
+                    <span class="sm-legend-swatch" style="margin-left:2cqw"></span>
+                    <p class="sm-legend-text">Arbeitstreffen</p>`;
+                wrapper.appendChild(legend);
+            }
 
             // Footer
             const footer = document.createElement('div');
