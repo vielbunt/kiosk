@@ -610,6 +610,11 @@
                     } else if (line.startsWith('DTSTART')) {
                         const dateStr = line.split(':').pop();
                         currentEvent.start = parseICSDate(dateStr);
+                        // Track whether this DTSTART carries a TZID (local-time event).
+                        // rrule.js v2.x uses getUTC* internally, so DST shifts cause
+                        // a 1-hour error for events defined in a different DST season.
+                        // We fix this with the naive-UTC round-trip in the rrule path.
+                        currentEvent.dtStartHasTzid = line.includes('TZID');
                     } else if (line.startsWith('DTEND')) {
                         const dateStr = line.split(':').pop();
                         currentEvent.end = parseICSDate(dateStr);
@@ -660,11 +665,30 @@
                 if (e.rrule && window.rrule) {
                     try {
                         const duration = e.end ? (e.end.getTime() - e.start.getTime()) : 0;
-                        const rule = rrule.rrulestr(e.rrule, { dtstart: e.start });
+
+                        // rrule.js v2.x uses getUTC* on dtstart, ignoring the local DST offset.
+                        // For TZID events (local Berlin time), we pass a "naive UTC" dtstart —
+                        // i.e. treat the local HH:MM as if it were UTC — so rrule preserves the
+                        // intended time-of-day across DST transitions.
+                        // After .between(), we convert each naive-UTC instance back to local time.
+                        const s = e.start;
+                        const dtstart = e.dtStartHasTzid
+                            ? new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate(),
+                                               s.getHours(), s.getMinutes(), s.getSeconds()))
+                            : s;
+
+                        const rule = rrule.rrulestr(e.rrule, { dtstart });
                         const instances = rule.between(startOfDay, maxDays, true);
                         const uidExceptions = (e.uid && recurrenceExceptions[e.uid]) || [];
 
-                        instances.forEach(date => {
+                        instances.forEach(naiveDate => {
+                            // Convert naive-UTC back to a real local-time Date for TZID events.
+                            const date = e.dtStartHasTzid
+                                ? new Date(naiveDate.getUTCFullYear(), naiveDate.getUTCMonth(),
+                                           naiveDate.getUTCDate(), naiveDate.getUTCHours(),
+                                           naiveDate.getUTCMinutes(), naiveDate.getUTCSeconds())
+                                : naiveDate;
+
                             if (e.exdates && e.exdates.includes(date.getTime())) return;
                             // Skip slots that are handled by a RECURRENCE-ID exception event
                             if (uidExceptions.includes(date.getTime())) return;
