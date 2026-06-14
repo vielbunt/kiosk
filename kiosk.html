@@ -851,7 +851,38 @@
             const isInternal = summary =>
                 INTERNAL_KEYWORDS.some(kw => summary.includes(kw));
 
-            events.slice(0, 10).forEach(e => {
+            // Build the 7-day window starting from today (or from next Monday in poster mode)
+            const _win0 = new Date();
+            _win0.setHours(0, 0, 0, 0);
+            const _win7 = new Date(_win0.getTime() + 8 * 24 * 60 * 60 * 1000);
+            let weekEvents = events.filter(e => e.start >= _win0 && e.start < _win7);
+
+            if (weekEvents.length > 10) {
+                // Remove Arbeitstreffen in priority tiers until ≤ 10; never remove Veranstaltungen
+                const tiers = [
+                    e => (e.summary || '').trimStart().startsWith('UAG'),
+                    e => (e.summary || '').trimStart().startsWith('AG'),
+                    e => isInternal(e.summary || ''),
+                ];
+                for (const inTier of tiers) {
+                    if (weekEvents.length <= 10) break;
+                    const candidates = weekEvents.filter(inTier);
+                    // Shuffle candidates so removal is random within each tier
+                    for (let i = candidates.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+                    }
+                    const removeSet = new Set(candidates.slice(0, weekEvents.length - 10));
+                    weekEvents = weekEvents.filter(e => !removeSet.has(e));
+                }
+            }
+
+            // If fewer than 10 in the 7-day window, pad with the next events beyond it
+            const displayEvents = weekEvents.length < 10
+                ? weekEvents.concat(events.filter(e => e.start >= _win7)).slice(0, 10)
+                : weekEvents.slice(0, 10);
+
+            displayEvents.forEach(e => {
                 const hasTime = e.start.getHours() !== 0 || e.start.getMinutes() !== 0;
                 const weekday = formatWeekday(e.start);
                 const datePart = formatDateShort(e.start);
@@ -873,8 +904,9 @@
 
             wrapper.appendChild(list);
 
-            // Legend (optional)
-            if (showLegend) {
+            // Legend (optional, only if at least one Arbeitstreffen is displayed)
+            const hasAnyInternal = displayEvents.some(e => isInternal(e.summary || ''));
+            if (showLegend && hasAnyInternal) {
                 const legend = document.createElement('div');
                 legend.className = 'sm-legend';
                 legend.innerHTML = `
