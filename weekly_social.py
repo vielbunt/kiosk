@@ -11,6 +11,7 @@ Steps:
 """
 
 import sys
+import time
 import subprocess
 from pathlib import Path
 
@@ -171,6 +172,22 @@ def step_post_instagram():
             print(f"    ✗ Instagram container error {container.status_code}: {container.text}")
         container.raise_for_status()
         creation_id = container.json()["id"]
+
+        # Wait for Instagram to finish processing the image before publishing
+        for attempt in range(24):  # up to ~2 minutes
+            status_r = requests.get(
+                f"https://graph.facebook.com/v20.0/{creation_id}",
+                params={"fields": "status_code", "access_token": page_token},
+            )
+            status_r.raise_for_status()
+            status_code = status_r.json().get("status_code")
+            if status_code == "FINISHED":
+                break
+            if status_code == "ERROR":
+                sys.exit(f"    ✗ Instagram container processing failed: {status_r.text}")
+            time.sleep(5)
+        else:
+            sys.exit("    ✗ Instagram container did not finish processing within 2 minutes.")
 
         # Publish
         publish = requests.post(

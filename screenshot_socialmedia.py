@@ -29,7 +29,7 @@ async def main():
         async with async_playwright() as p:
             browser = await p.chromium.launch()
             page = await browser.new_page(viewport={"width": 1080, "height": 1350})
-            await page.goto(f"http://127.0.0.1:{PORT}/kiosk.html?mode=socialmedia")
+            await page.goto(f"http://127.0.0.1:{PORT}/kiosk.html?mode=socialmedia&poster=true")
             await page.wait_for_selector(".sm-event", timeout=30000)
             await asyncio.sleep(0.5)  # let rAF trim settle
             await page.screenshot(path=str(OUT), full_page=False)
