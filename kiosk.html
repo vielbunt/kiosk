@@ -432,7 +432,7 @@
 
     <script>
         const WP_API_URL = 'https://www.vielbunt.org/wp-json/wp/v2/posts';
-        const ICS_URL = 'https://calendar.google.com/calendar/ical/vielbunt.org_9dumkl9hgmdsf22bvi3vb7du78%40group.calendar.google.com/private-013fe0c849d9583baa62c544041996a4/basic.ics';
+        const ICS_URL = 'https://shy-recipe-d443.me-02a.workers.dev/';
 
         let slidesData = [];
         let currentSlideIndex = 0;
@@ -566,39 +566,19 @@
         const ICS_CACHE_KEY = 'vielbunt_ics';
         const ICS_CACHE_TTL = 30 * 60 * 1000; // 30 min
 
-        const PROXIES = [
-            {
-                url: `https://cors.io/?url=${encodeURIComponent(ICS_URL)}`,
-                extract: async (r) => { const j = await r.json(); return j.body; }
-            },
-            {
-                url: `https://api.allorigins.win/raw?url=${encodeURIComponent(ICS_URL)}`,
-                extract: async (r) => r.text()
-            },
-            {
-                url: `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(ICS_URL)}`,
-                extract: async (r) => r.text()
-            }
-        ];
-
-        async function fetchICSFromProxy(proxy) {
+        async function fetchAndCacheICS() {
             const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 5000);
+            const id = setTimeout(() => controller.abort(), 20000);
+            let text;
             try {
-                const response = await fetch(proxy.url, { signal: controller.signal });
+                const response = await fetch(ICS_URL, { signal: controller.signal });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const text = await proxy.extract(response);
+                text = await response.text();
                 if (!text || !text.includes('BEGIN:VCALENDAR')) throw new Error('Invalid ICS');
-                console.log('ICS fetched via', proxy.url.split('?')[0]);
-                return text;
+                console.log('ICS fetched from worker');
             } finally {
                 clearTimeout(id);
             }
-        }
-
-        async function fetchAndCacheICS() {
-            const text = await Promise.any(PROXIES.map(p => fetchICSFromProxy(p)))
-                .catch(() => { throw new Error('All proxy fetches failed'); });
             try {
                 localStorage.setItem(ICS_CACHE_KEY, JSON.stringify({ text, ts: Date.now() }));
             } catch (_) {}
