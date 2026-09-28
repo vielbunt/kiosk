@@ -56,7 +56,7 @@ def _einstellung(name):
 META_ACCESS_TOKEN    = _einstellung("META_ACCESS_TOKEN")
 FACEBOOK_PAGE_ID     = _einstellung("FACEBOOK_PAGE_ID")
 INSTAGRAM_ACCOUNT_ID = _einstellung("INSTAGRAM_ACCOUNT_ID")
-if not all([META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID]):
+if not all([META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID]) and "--probe" not in sys.argv:
     sys.exit(
         "Meta-Zugangsdaten fehlen. Entweder META_ACCESS_TOKEN, FACEBOOK_PAGE_ID und INSTAGRAM_ACCOUNT_ID\n"
         "als Umgebungsvariablen setzen oder meta_config_template.py → meta_config.py kopieren."
@@ -269,6 +269,41 @@ def step_post_instagram():
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
+def _schriften_pruefen():
+    """Rendert kiosk.html kurz und schaut, ob Cera Pro wirklich geladen wurde."""
+    import asyncio
+    import functools
+    import http.server
+    import threading
+    from playwright.async_api import async_playwright
+
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(KIOSK_DIR))
+    handler.log_message = lambda *a: None
+    server = http.server.HTTPServer(("127.0.0.1", 0), handler)  # freier Port, 7655 hängt evtl. noch
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    async def pruefen():
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page(timezone_id="Europe/Berlin")
+                await page.goto(f"http://127.0.0.1:{port}/kiosk.html?mode=socialmedia&poster=true")
+                await page.wait_for_selector(".sm-event", timeout=30000)
+                await page.evaluate("document.fonts.ready")
+                geladen = await page.evaluate(
+                    "[...document.fonts].filter(f => f.status === 'loaded').map(f => f.family + ' ' + f.weight)")
+                await browser.close()
+                return geladen
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    geladen = asyncio.run(pruefen())
+    zeichen = "✓" if any("Cera" in f for f in geladen) else "✗"
+    print(f"    {zeichen} Schriften geladen: {geladen or 'keine (Systemschrift oder Fallback)'}")
+
+
 def probe():
     """Prüft alles, was in der Cloud schiefgehen kann, ohne etwas zu veröffentlichen."""
     print("🧪  Probelauf, es wird nichts hochgeladen oder gepostet\n")
@@ -276,18 +311,27 @@ def probe():
     from poster_druck import erstelle_druck_pdf
     pdf = erstelle_druck_pdf()
     print(f"    ✓ PDF gebaut: {pdf.name}")
+    _schriften_pruefen()
     ok = True
-    svc = _drive_service()
     try:
+        svc = _drive_service()
         meta = svc.files().get(fileId=POSTER_DRIVE_FOLDER_ID, fields="name,capabilities(canAddChildren)",
                                supportsAllDrives=True).execute()
         print(f"    ✓ Drive: Ordner \"{meta['name']}\", darf hochladen: {meta['capabilities']['canAddChildren']}")
-    except Exception:
+    except (Exception, SystemExit) as fehler:
         # Mit dem alten OAuth-Token (drive.file) sieht man den Ordner grundsätzlich nicht
-        print("    ✗ Drive: Poster-Ordner nicht sichtbar. In der Cloud braucht der Service-Account Zugriff.")
+        print(f"    ✗ Drive: {fehler}")
         ok = False
-    _page_access_token()
-    print("    ✓ Meta: Seiten-Token geholt")
+    if not all([META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID]):
+        print("    ✗ Meta: META_ACCESS_TOKEN, FACEBOOK_PAGE_ID oder INSTAGRAM_ACCOUNT_ID fehlt")
+        ok = False
+    else:
+        try:
+            _page_access_token()
+            print("    ✓ Meta: Seiten-Token geholt")
+        except (Exception, SystemExit) as fehler:
+            print(f"    ✗ Meta: {fehler}")
+            ok = False
     if not ok:
         sys.exit("❌  Probelauf mit Fehlern")
     print("✅  Probelauf ok")
