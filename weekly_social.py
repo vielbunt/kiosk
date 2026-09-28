@@ -13,6 +13,7 @@ Steps:
   python3 weekly_social.py --nur-poster   → only steps 1 and 2, nothing gets posted
 """
 
+import os
 import sys
 import time
 import subprocess
@@ -31,7 +32,10 @@ POSTER_PNG      = KIOSK_DIR / "poster.png"
 #   https://drive.google.com/drive/folders/<FOLDER_ID>
 POSTER_DRIVE_FOLDER_ID = "12EuQWm3kp9CHectJWfnMzqm-0z1v5DTg"
 
-AKO_DIR          = Path("/Users/janbambach/AKÖ")
+# Der Drive-Token liegt im postergenerator-Repo (gitignored), weil der auch die Sharepics hochlädt.
+# Mit VB_POSTERGENERATOR_DIR lässt sich der Ordner umbiegen, z. B. in einer Cloud-Umgebung.
+AKO_DIR          = Path(os.environ.get("VB_POSTERGENERATOR_DIR",
+                                       Path.home() / "Documents/GitHub/postergenerator"))
 CREDENTIALS_FILE = AKO_DIR / "gdrive_credentials.json"
 TOKEN_FILE       = AKO_DIR / "gdrive_token.json"
 DRIVE_SCOPES     = ["https://www.googleapis.com/auth/drive.file"]

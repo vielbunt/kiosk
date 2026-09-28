@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Macht aus poster.png ein Druck-PDF: zwei A3-Querformat-Seiten, die übereinander
-gelegt ein A2-Plakat ergeben (gleiche Regeln wie bei den Sharepics in ~/AKÖ/script.py).
+gelegt ein A2-Plakat ergeben (gleiche Regeln wie bei den Sharepics in script.py im postergenerator-Repo).
 
 - Die Naht liegt immer in einer Lücke zwischen zwei Blöcken (Header, Terminzeilen,
   Legende, Footer), es wird also nie ein Termin durchgeschnitten.
