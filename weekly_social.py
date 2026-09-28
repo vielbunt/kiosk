@@ -289,7 +289,7 @@ def _schriften_pruefen():
                 from browser_start import browser_und_seite
                 browser, page = await browser_und_seite(p)
                 await page.goto(f"http://127.0.0.1:{port}/kiosk.html?mode=socialmedia&poster=true")
-                await page.wait_for_selector(".sm-event", timeout=30000)
+                await page.wait_for_selector(".sm-event", timeout=90000)  # über den Cloud-Proxy dauerts manchmal länger
                 await page.evaluate("document.fonts.ready")
                 geladen = await page.evaluate(
                     "[...document.fonts].filter(f => f.status === 'loaded').map(f => f.family + ' ' + f.weight)")

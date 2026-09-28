@@ -35,7 +35,7 @@ async def main():
             await page.goto(f"http://127.0.0.1:{PORT}/kiosk.html?mode=socialmedia&poster=true")
             # Cera Pro gleich anstoßen, in der Cloud kommt sie erst von vielbunt.org
             await page.evaluate("Promise.all([document.fonts.load(\"400 20px 'Cera Pro'\"), document.fonts.load(\"700 20px 'Cera Pro'\")])")
-            await page.wait_for_selector(".sm-event", timeout=30000)
+            await page.wait_for_selector(".sm-event", timeout=90000)  # über den Cloud-Proxy dauerts manchmal länger
             await page.evaluate("document.fonts.ready")
             await asyncio.sleep(0.5)  # let rAF trim settle
             await page.screenshot(path=str(OUT), full_page=False)
