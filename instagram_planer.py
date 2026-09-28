@@ -141,14 +141,34 @@ def _post(pfad: str, token: str, **daten) -> str:
     return r.json()["id"]
 
 
-def veroeffentlichen(bilder: list[str], text: str, token: str) -> str:
+def _bild_container(konto, token, alt, **daten) -> str:
+    """Legt einen Bild-Container an, mit Alt-Text. Lehnt Instagram das Feld ab, ohne."""
+    try:
+        return _post(f"{konto}/media", token, alt_text=alt, **daten)
+    except RuntimeError as fehler:
+        if "alt_text" not in str(fehler):
+            raise
+        return _post(f"{konto}/media", token, **daten)
+
+
+def alt_texte(titel: str, anzahl: int) -> list[str]:
+    # gleiche Texte wie in vielbunt_publish.py (postergenerator) für WordPress
+    if anzahl == 1:
+        return [f"Sharepic von vielbunt: {titel}"]
+    return [f"Sharepic von vielbunt, Folie 1 von {anzahl}: {titel}"] + [
+        f"Sharepic von vielbunt, Folie {i} von {anzahl}: Infos zu {titel} mit Datum, Uhrzeit, Ort und Beschreibung"
+        for i in range(2, anzahl + 1)]
+
+
+def veroeffentlichen(bilder: list[str], text: str, token: str, titel: str = "") -> str:
     konto = einstellung("INSTAGRAM_ACCOUNT_ID")
+    alts = alt_texte(titel, len(bilder))
     if len(bilder) == 1:
-        container = _post(f"{konto}/media", token, image_url=bilder[0], caption=text)
+        container = _bild_container(konto, token, alts[0], image_url=bilder[0], caption=text)
     else:
         kinder = []
-        for url in bilder[:10]:  # Instagram erlaubt max. 10 Bilder pro Karussell
-            kind = _post(f"{konto}/media", token, image_url=url, is_carousel_item="true")
+        for url, alt in list(zip(bilder, alts))[:10]:  # Instagram erlaubt max. 10 Bilder pro Karussell
+            kind = _bild_container(konto, token, alt, image_url=url, is_carousel_item="true")
             _warten(kind, token)
             kinder.append(kind)
         container = _post(f"{konto}/media", token, media_type="CAROUSEL", children=",".join(kinder), caption=text)
@@ -197,7 +217,7 @@ def main():
         schreibe(sh, sid, kopf, nr, "Instagram-ID", f"läuft seit {jetzt:%Y-%m-%d %H:%M}")
         token = token or seiten_token()
         try:
-            ig_id = veroeffentlichen(bilder, e.get("Text", ""), token)
+            ig_id = veroeffentlichen(bilder, e.get("Text", ""), token, e.get("Titel", ""))
         except Exception as fehler:
             schreibe(sh, sid, kopf, nr, "Instagram-ID", f"Fehler {jetzt:%Y-%m-%d %H:%M}: {str(fehler)[:200]}")
             print(f"    ✗ {fehler}")

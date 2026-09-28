@@ -34,14 +34,11 @@ POSTER_PNG      = KIOSK_DIR / "poster.png"
 #   https://drive.google.com/drive/folders/<FOLDER_ID>
 POSTER_DRIVE_FOLDER_ID = "12EuQWm3kp9CHectJWfnMzqm-0z1v5DTg"
 
-# Der Drive-Token liegt im postergenerator-Repo (gitignored), weil der auch die Sharepics hochlädt.
-# Mit VB_POSTERGENERATOR_DIR lässt sich der Ordner umbiegen, z. B. in einer Cloud-Umgebung.
+# Lokal liegt der Service-Account im postergenerator-Repo (gitignored), in der Cloud kommt er aus
+# GOOGLE_SERVICE_ACCOUNT_JSON. VB_POSTERGENERATOR_DIR biegt den Ordner um.
 AKO_DIR          = Path(os.environ.get("VB_POSTERGENERATOR_DIR",
                                        Path.home() / "Documents/GitHub/postergenerator"))
-CREDENTIALS_FILE = AKO_DIR / "gdrive_credentials.json"
-TOKEN_FILE       = AKO_DIR / "gdrive_token.json"
 SA_FILE          = AKO_DIR / "scheduler" / "service_account.json"
-DRIVE_SCOPES     = ["https://www.googleapis.com/auth/drive.file"]
 
 # ── Meta credentials ───────────────────────────────────────────────────────
 # In der Cloud kommen die aus Umgebungsvariablen, lokal aus meta_config.py.
@@ -88,53 +85,24 @@ def _page_access_token():
 
 
 def _drive_service():
-    """Drive-Zugang: bevorzugt der Service-Account (GOOGLE_SERVICE_ACCOUNT_JSON oder
-    postergenerator/scheduler/service_account.json), solange der keinen Zugriff auf den
-    Poster-Ordner hat, der alte OAuth-Token."""
+    """Drive-Zugang über den Service-Account (GOOGLE_SERVICE_ACCOUNT_JSON oder, lokal,
+    postergenerator/scheduler/service_account.json)."""
     try:
         import json
         from google.oauth2 import service_account
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
-        from googleapiclient.errors import HttpError
     except ImportError:
-        sys.exit(
-            "Google Drive libraries not installed.\n"
-            "Run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib"
-        )
+        sys.exit("Google-Bibliotheken fehlen: pip install -r requirements.txt")
 
     roh = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     if roh and not roh.startswith("{"):  # base64-kodiert
         import base64
         roh = base64.b64decode(roh).decode()
-    info = json.loads(roh) if roh else (json.loads(SA_FILE.read_text()) if SA_FILE.exists() else None)
-    if info:
-        creds = service_account.Credentials.from_service_account_info(
-            info, scopes=["https://www.googleapis.com/auth/drive"])
-        svc = build("drive", "v3", credentials=creds, cache_discovery=False)
-        try:
-            meta = svc.files().get(fileId=POSTER_DRIVE_FOLDER_ID, fields="capabilities(canAddChildren)",
-                                   supportsAllDrives=True).execute()
-            if meta.get("capabilities", {}).get("canAddChildren"):
-                return svc
-        except HttpError:
-            pass
-        print("    (Service-Account hat noch keinen Zugriff auf den Poster-Ordner, nehme den OAuth-Token)")
-
-    if not TOKEN_FILE.exists():
-        sys.exit(
-            f"Kein Drive-Zugang: Service-Account ohne Zugriff und kein Token unter {TOKEN_FILE}."
-        )
-
-    creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), DRIVE_SCOPES)
-    if not creds.valid:
-        if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            TOKEN_FILE.write_text(creds.to_json())
-        else:
-            sys.exit("Drive token expired and cannot be refreshed. Re-authenticate interactively.")
-
+    if not roh and not SA_FILE.exists():
+        sys.exit(f"Kein Service-Account: GOOGLE_SERVICE_ACCOUNT_JSON setzen oder {SA_FILE} anlegen.")
+    info = json.loads(roh) if roh else json.loads(SA_FILE.read_text())
+    creds = service_account.Credentials.from_service_account_info(
+        info, scopes=["https://www.googleapis.com/auth/drive"])
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
@@ -337,7 +305,28 @@ def probe():
     print("✅  Probelauf ok")
 
 
+def meta_token_pruefen(tage: int = 14) -> None:
+    """Warnt, wenn der Meta-Token bald abläuft (steht dann im Bericht der Routine)."""
+    from datetime import datetime, timedelta, timezone
+    try:
+        daten = requests.get("https://graph.facebook.com/v20.0/debug_token", params={
+            "input_token": META_ACCESS_TOKEN, "access_token": META_ACCESS_TOKEN}, timeout=30).json().get("data", {})
+    except Exception as e:
+        print(f"⚠️  Meta-Token nicht prüfbar: {e}")
+        return
+    if not daten.get("is_valid", False):
+        print("⚠️  META-TOKEN ist ungültig, bitte erneuern.")
+        return
+    grenze = datetime.now(timezone.utc) + timedelta(days=tage)
+    for feld, was in (("expires_at", "läuft ab"), ("data_access_expires_at", "Datenzugriff endet")):
+        ts = daten.get(feld) or 0
+        if ts and datetime.fromtimestamp(ts, timezone.utc) < grenze:
+            print(f"⚠️  META-TOKEN {was} am {datetime.fromtimestamp(ts):%d.%m.%Y}, rechtzeitig erneuern.")
+
+
 def main():
+    if META_ACCESS_TOKEN:
+        meta_token_pruefen()
     if "--probe" in sys.argv:
         probe()
         return
