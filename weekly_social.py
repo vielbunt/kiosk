@@ -318,7 +318,7 @@ def probe():
         meta = svc.files().get(fileId=POSTER_DRIVE_FOLDER_ID, fields="name,capabilities(canAddChildren)",
                                supportsAllDrives=True).execute()
         print(f"    ✓ Drive: Ordner \"{meta['name']}\", darf hochladen: {meta['capabilities']['canAddChildren']}")
-    except (Exception, SystemExit) as fehler:
+    except BaseException as fehler:  # auch Abstürze beim Import, z. B. kaputtes cryptography
         # Mit dem alten OAuth-Token (drive.file) sieht man den Ordner grundsätzlich nicht
         print(f"    ✗ Drive: {fehler}")
         ok = False
@@ -329,7 +329,7 @@ def probe():
         try:
             _page_access_token()
             print("    ✓ Meta: Seiten-Token geholt")
-        except (Exception, SystemExit) as fehler:
+        except BaseException as fehler:  # auch Abstürze beim Import, z. B. kaputtes cryptography
             print(f"    ✗ Meta: {fehler}")
             ok = False
     if not ok:

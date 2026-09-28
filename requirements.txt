@@ -8,3 +8,6 @@ google-auth>=2.0
 google-auth-httplib2>=0.1
 google-auth-oauthlib>=1.0
 tzdata
+# Das Cloud-Image bringt ein kaputtes cryptography aus apt mit (ohne cffi), darum eigene Versionen
+cryptography>=43.0
+cffi>=1.16
