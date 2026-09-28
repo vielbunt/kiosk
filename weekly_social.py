@@ -286,8 +286,8 @@ def _schriften_pruefen():
     async def pruefen():
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                page = await browser.new_page(timezone_id="Europe/Berlin")
+                from browser_start import browser_und_seite
+                browser, page = await browser_und_seite(p)
                 await page.goto(f"http://127.0.0.1:{port}/kiosk.html?mode=socialmedia&poster=true")
                 await page.wait_for_selector(".sm-event", timeout=30000)
                 await page.evaluate("document.fonts.ready")

@@ -45,15 +45,13 @@ def start_server():
 
 async def main():
     from playwright.async_api import async_playwright
+    from browser_start import browser_und_seite
 
     server = start_server()
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            # Termine immer in Darmstädter Zeit anzeigen, auch wenn der Rechner (Cloud) auf UTC läuft
-            page = await browser.new_page(
-                timezone_id="Europe/Berlin",
-                locale="de-DE",
+            browser, page = await browser_und_seite(
+                p,
                 viewport={"width": 1080, "height": 1350},
                 device_scale_factor=SCALE,
             )
