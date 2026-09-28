@@ -560,7 +560,37 @@
             });
 
             // Sort by date ascending (soonest event/newest post first)
+            // Alle Sharepics vorab laden und dekodieren, solange noch "Lade Inhalte..." zu sehen ist.
+            // So erscheinen die Slides sofort vollstaendig statt Stueck fuer Stueck.
+            await preloadImages(slidePosts.flatMap(p => p.images));
             return slidePosts.sort((a, b) => a.sortDate - b.sortDate);
+        }
+
+        // Vorgeladene Bilder: URL -> fertig dekodiertes <img>, wird in buildSlides direkt verwendet
+        const preloadedImages = new Map();
+        function preloadImages(urls) {
+            const one = (url) => new Promise(resolve => {
+                const img = new Image();
+                img.decoding = 'async';
+                let done = false;
+                const finish = (ok) => {
+                    if (done) return;
+                    done = true;
+                    if (ok) preloadedImages.set(url, img);
+                    resolve();
+                };
+                img.onload = () => {
+                    // decode() stellt sicher, dass das Bild beim Einblenden nicht erst dekodiert wird.
+                    // Hoechstens 3 Sekunden warten: im Hintergrund-Tab schiebt der Browser das Dekodieren auf.
+                    const decoded = img.decode ? img.decode().catch(() => {}) : Promise.resolve();
+                    Promise.race([decoded, new Promise(r => setTimeout(r, 3000))]).then(() => finish(true));
+                };
+                img.onerror = () => finish(false);
+                // ein einzelnes haengendes Bild darf den Start nicht blockieren
+                setTimeout(() => finish(img.complete && img.naturalWidth > 0), 20000);
+                img.src = url;
+            });
+            return Promise.all([...new Set(urls)].map(one));
         }
 
         const ICS_CACHE_KEY = 'vielbunt_ics';
@@ -932,8 +962,13 @@
                     wrapper.className = 'sharepics ' + (post.images.length === 1 ? 'single' : '');
 
                     post.images.forEach(imgSrc => {
-                        const img = document.createElement('img');
-                        img.src = imgSrc;
+                        // vorgeladenes Bild verwenden, sonst wie bisher neu anlegen
+                        let img = preloadedImages.get(imgSrc);
+                        if (img && img.parentNode) img = img.cloneNode();
+                        if (!img) {
+                            img = document.createElement('img');
+                            img.src = imgSrc;
+                        }
                         wrapper.appendChild(img);
                     });
 

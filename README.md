@@ -1,0 +1,80 @@
+# vielbunt Kiosk
+
+Bildschirm-Slideshow von vielbunt: Sharepics aus den Posts auf vielbunt.org und die nächsten Termine
+aus dem vielbunt-Kalender. Dazu die Skripte für die wöchentliche Terminübersicht auf Social Media und
+das Plakat zum Ausdrucken.
+
+## Die drei Kiosk-Fassungen
+
+| Datei | Wofür | Animationen |
+| --- | --- | --- |
+| `kiosk.html` | Grundfassung, auch Quelle für Social-Media-Bild und Plakat | keine |
+| `kiosk-show.html` | der neue Kiosk, live unter vielbunt.org/kiosk.html | live gerendert aus vielbunt-loop |
+| `kiosk-lite/kiosk-lite.html` | Pi Zero im Barraum und andere schwache Geräte | vorgerenderte Videos |
+
+Alle drei holen dieselben Daten: Posts über die WordPress-API von vielbunt.org, Termine über den
+Cloudflare-Worker `shy-recipe-d443.me-02a.workers.dev` (liefert den vielbunt-Kalender als ICS mit CORS).
+
+### kiosk.html
+
+URL-Parameter:
+
+- `mode=events` oder `events_only`: nur die Terminübersicht
+- `mode=compact` oder `compact_mode`: Terminliste, so viele wie auf den Bildschirm passen
+- `mode=mitmachen`: zusätzlich ein Mitmachen-Slide
+- `mode=socialmedia`: ein festes 4:5-Bild mit den Terminen der Woche, dazu `poster=true` (ab nächstem
+  Montag) und `legend=false`
+- `disco`, `no_animation`
+
+### kiosk-show.html
+
+Wird nicht von Hand bearbeitet, sondern im Projekt vielbunt-motion (`~/Downloads/vielbunt-motion`)
+mit `npm run kiosk` aus `kiosk.html` und `vielbunt-loop.html` gebaut und hier abgelegt. Zwischen den
+Slides laufen Animationen aus dem Loop, jedes dritte Mal kommt stattdessen die Terminübersicht. Alle
+Modi von `kiosk.html` funktionieren weiter. Zusätzliche Parameter: `dauer` (Sekunden je Slide, 20),
+`uebersicht` (Sekunden, 30), `stil` (z. B. `stil=pink,nacht`), `intro`.
+
+Braucht einen halbwegs flotten Rechner. Auf einem Pi Zero ruckelt es, dafür gibt es kiosk-lite.
+
+### kiosk-lite
+
+Die gleichen Inhalte ohne Live-Animationen: zwei Sharepics, Terminübersicht, ein vorgerenderter Clip,
+reihum. Details, Neu-Rendern der Clips und Deploy auf den Pi stehen in
+[`kiosk-lite/README.md`](kiosk-lite/README.md).
+
+## Pi im Barraum
+
+`Raspi-Zero-Barraum-Kiosk` (Pi Zero 2 W, 192.168.10.60 im Netz des queeren Zentrums, Benutzer
+`kiosk-admin`) zeigt `kiosk-lite`. Im Ordner [`pi/`](pi/) liegt, was auf dem Pi außerhalb der Seite
+eingerichtet ist:
+
+- `kiosk.service`: Autostart unter `/etc/systemd/system/`, startet Chromium im Vollbild in `cage`
+  mit `file:///home/kiosk-admin/kiosk-lite.html`. Ändern nur mit `sudo`, danach
+  `sudo systemctl daemon-reload && sudo systemctl restart kiosk`.
+- `unsichtbarer-mauszeiger.py`: legt ein leeres Zeiger-Theme in `~/.icons/default` an, sonst malt
+  `cage` einen Pfeil ins Bild. Einmal auf dem Pi als `kiosk-admin` ausführen.
+- Zusätzlich startet ein Cronjob von `kiosk-admin` den Kiosk jeden Tag um 11:30 neu:
+  `30 11 * * * sudo systemctl restart kiosk.service`
+
+Auf dem Pi liegen neben `kiosk-lite.html` noch alte Testdateien (`kiosk-test.html`, `kiosk-cog*.html`).
+Die werden nicht mehr benutzt.
+
+## Social Media und Plakat
+
+| Datei | Zweck |
+| --- | --- |
+| `weekly_social.py` | Sonntagsroutine: Bild und Plakat erzeugen, Plakat-PDF nach Google Drive, Bild auf Facebook und Instagram posten. `--nur-poster` postet nichts |
+| `screenshot_socialmedia.py` | `kiosk.html?mode=socialmedia` als `socialmedia.png` (1080×1350) |
+| `screenshot_poster.py` | Plakatfassung als `poster.png` (5400×6750, für A2) |
+| `poster_druck.py` | macht aus `poster.png` ein Druck-PDF aus zwei A3-Seiten, die Naht liegt nie in einem Termin |
+| `meta_config_template.py` | Vorlage für `meta_config.py` mit den Meta-Zugangsdaten (die echte Datei ist in `.gitignore`) |
+
+Erzeugte Bilder, PDFs und `poster_layout.json` sind ebenfalls in `.gitignore`.
+
+## Lokal ansehen
+
+```
+python3 -m http.server 7654
+```
+
+Dann http://localhost:7654/kiosk.html, `/kiosk-show.html` oder `/kiosk-lite/kiosk-lite.html` öffnen.

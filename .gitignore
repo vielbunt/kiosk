@@ -4,3 +4,5 @@ poster.png
 socialmedia.png
 meta_config.py
 /__pycache__
+poster_layout.json
+*.pdf

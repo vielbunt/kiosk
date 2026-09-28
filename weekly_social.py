@@ -4,10 +4,13 @@ vielbunt weekly social media routine.
 Intended to run every Sunday ~9am.
 
 Steps:
-  1. Generate socialmedia.png (1080×1350) and poster.png (3240×4050)
-  2. Upload poster.png to Google Drive → AK Öffentlichkeitsarbeit/Social Media/Poster
+  1. Generate socialmedia.png (1080×1350) and poster.png (5400×6750)
+  2. Turn poster.png into a print PDF (2× A3 landscape = A2, see poster_druck.py)
+     and upload it to Google Drive → AK Öffentlichkeitsarbeit/Social Media/Poster
   3. Post socialmedia.png to the vielbunt Facebook page
   4. Post socialmedia.png to the vielbunt Instagram account
+
+  python3 weekly_social.py --nur-poster   → only steps 1 and 2, nothing gets posted
 """
 
 import sys
@@ -105,13 +108,18 @@ def step_screenshots():
 
 
 def step_upload_poster():
-    print("📁  Uploading poster.png to Google Drive…")
+    print("🖨   Building print PDF from poster.png…")
+    from poster_druck import erstelle_druck_pdf
+    pdf = erstelle_druck_pdf()
+    print(f"    ✓ {pdf.name}\n")
+
+    print("📁  Uploading poster PDF to Google Drive…")
     from googleapiclient.http import MediaFileUpload
 
     svc = _drive_service()
-    media = MediaFileUpload(str(POSTER_PNG), mimetype="image/png", resumable=True)
+    media = MediaFileUpload(str(pdf), mimetype="application/pdf", resumable=True)
     result = svc.files().create(
-        body={"name": "poster.png", "parents": [POSTER_DRIVE_FOLDER_ID]},
+        body={"name": pdf.name, "parents": [POSTER_DRIVE_FOLDER_ID]},
         media_body=media,
         fields="id,name",
         supportsAllDrives=True,
@@ -213,6 +221,9 @@ def main():
     print("🚀  vielbunt weekly social media routine\n")
     step_screenshots()
     step_upload_poster()
+    if "--nur-poster" in sys.argv:
+        print("✅  Poster done, social media skipped (--nur-poster)")
+        return
     step_post_facebook()
     step_post_instagram()
     print("✅  All done!")
