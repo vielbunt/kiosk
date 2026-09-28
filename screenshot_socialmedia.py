@@ -28,9 +28,17 @@ async def main():
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch()
-            page = await browser.new_page(viewport={"width": 1080, "height": 1350})
+            # Termine immer in Darmstädter Zeit anzeigen, auch wenn der Rechner (Cloud) auf UTC läuft
+            page = await browser.new_page(
+                timezone_id="Europe/Berlin",
+                locale="de-DE",
+                viewport={"width": 1080, "height": 1350},
+            )
             await page.goto(f"http://127.0.0.1:{PORT}/kiosk.html?mode=socialmedia&poster=true")
+            # Cera Pro gleich anstoßen, in der Cloud kommt sie erst von vielbunt.org
+            await page.evaluate("Promise.all([document.fonts.load(\"400 20px 'Cera Pro'\"), document.fonts.load(\"700 20px 'Cera Pro'\")])")
             await page.wait_for_selector(".sm-event", timeout=30000)
+            await page.evaluate("document.fonts.ready")
             await asyncio.sleep(0.5)  # let rAF trim settle
             await page.screenshot(path=str(OUT), full_page=False)
             await browser.close()

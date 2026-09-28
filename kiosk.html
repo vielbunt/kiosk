@@ -10,6 +10,29 @@
 //# sourceMappingURL=rrule.min.js.map
     </script>
     <style>
+        /* Cera Pro: erst die installierte Schrift, sonst von vielbunt.org (dort mit CORS freigegeben).
+           Damit sehen Social-Media-Bild und Plakat auch in der Cloud und auf dem Pi richtig aus. */
+        @font-face {
+            font-family: 'Cera Pro';
+            src: local('Cera Pro Regular'), local('CeraPro-Regular'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Regular.woff2') format('woff2'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Regular.woff') format('woff');
+            font-weight: 400; font-style: normal; font-display: block;
+        }
+        @font-face {
+            font-family: 'Cera Pro';
+            src: local('Cera Pro Bold'), local('CeraPro-Bold'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Bold.woff2') format('woff2'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Bold.woff') format('woff');
+            font-weight: 700; font-style: normal; font-display: block;
+        }
+        @font-face {
+            font-family: 'Cera Pro';
+            src: local('Cera Pro Regular Italic'), local('CeraPro-RegularItalic'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Regular-Italic.woff2') format('woff2'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Regular-Italic.woff') format('woff');
+            font-weight: 400; font-style: italic; font-display: block;
+        }
+        @font-face {
+            font-family: 'Cera Pro';
+            src: local('Cera Pro Bold Italic'), local('CeraPro-BoldItalic'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Bold-Italic.woff2') format('woff2'), url('https://www.vielbunt.org/wp-content/uploads/2021/01/Cera-Pro-Bold-Italic.woff') format('woff');
+            font-weight: 700; font-style: italic; font-display: block;
+        }
+
         /* CSS reset & layout */
         body {
             margin: 0;

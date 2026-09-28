@@ -38,15 +38,26 @@ AKO_DIR          = Path(os.environ.get("VB_POSTERGENERATOR_DIR",
                                        Path.home() / "Documents/GitHub/postergenerator"))
 CREDENTIALS_FILE = AKO_DIR / "gdrive_credentials.json"
 TOKEN_FILE       = AKO_DIR / "gdrive_token.json"
+SA_FILE          = AKO_DIR / "scheduler" / "service_account.json"
 DRIVE_SCOPES     = ["https://www.googleapis.com/auth/drive.file"]
 
 # ── Meta credentials ───────────────────────────────────────────────────────
+# In der Cloud kommen die aus Umgebungsvariablen, lokal aus meta_config.py.
 try:
-    from meta_config import META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID
+    import meta_config as _meta
 except ImportError:
+    _meta = None
+
+def _einstellung(name):
+    return os.environ.get(name) or getattr(_meta, name, None)
+
+META_ACCESS_TOKEN    = _einstellung("META_ACCESS_TOKEN")
+FACEBOOK_PAGE_ID     = _einstellung("FACEBOOK_PAGE_ID")
+INSTAGRAM_ACCOUNT_ID = _einstellung("INSTAGRAM_ACCOUNT_ID")
+if not all([META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID]):
     sys.exit(
-        "meta_config.py not found.\n"
-        "Copy meta_config_template.py → meta_config.py and fill in your credentials."
+        "Meta-Zugangsdaten fehlen. Entweder META_ACCESS_TOKEN, FACEBOOK_PAGE_ID und INSTAGRAM_ACCOUNT_ID\n"
+        "als Umgebungsvariablen setzen oder meta_config_template.py → meta_config.py kopieren."
     )
 
 # ── Caption ────────────────────────────────────────────────────────────────
@@ -75,20 +86,43 @@ def _page_access_token():
 
 
 def _drive_service():
+    """Drive-Zugang: bevorzugt der Service-Account (GOOGLE_SERVICE_ACCOUNT_JSON oder
+    postergenerator/scheduler/service_account.json), solange der keinen Zugriff auf den
+    Poster-Ordner hat, der alte OAuth-Token."""
     try:
+        import json
+        from google.oauth2 import service_account
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
+        from googleapiclient.errors import HttpError
     except ImportError:
         sys.exit(
             "Google Drive libraries not installed.\n"
             "Run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib"
         )
 
+    roh = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    if roh and not roh.startswith("{"):  # base64-kodiert
+        import base64
+        roh = base64.b64decode(roh).decode()
+    info = json.loads(roh) if roh else (json.loads(SA_FILE.read_text()) if SA_FILE.exists() else None)
+    if info:
+        creds = service_account.Credentials.from_service_account_info(
+            info, scopes=["https://www.googleapis.com/auth/drive"])
+        svc = build("drive", "v3", credentials=creds, cache_discovery=False)
+        try:
+            meta = svc.files().get(fileId=POSTER_DRIVE_FOLDER_ID, fields="capabilities(canAddChildren)",
+                                   supportsAllDrives=True).execute()
+            if meta.get("capabilities", {}).get("canAddChildren"):
+                return svc
+        except HttpError:
+            pass
+        print("    (Service-Account hat noch keinen Zugriff auf den Poster-Ordner, nehme den OAuth-Token)")
+
     if not TOKEN_FILE.exists():
         sys.exit(
-            f"Drive token not found at {TOKEN_FILE}.\n"
-            "Authenticate once interactively by running the gdrive_upload.py script."
+            f"Kein Drive-Zugang: Service-Account ohne Zugriff und kein Token unter {TOKEN_FILE}."
         )
 
     creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), DRIVE_SCOPES)
@@ -99,7 +133,7 @@ def _drive_service():
         else:
             sys.exit("Drive token expired and cannot be refreshed. Re-authenticate interactively.")
 
-    return build("drive", "v3", credentials=creds)
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
 # ── Steps ──────────────────────────────────────────────────────────────────
@@ -158,17 +192,21 @@ def step_post_instagram():
 
     # Upload temp copy
     media = MediaFileUpload(str(SOCIALMEDIA_PNG), mimetype="image/png")
+    # Liegt im Poster-Ordner, weil der Service-Account keine eigene "Meine Ablage" hat
     tmp = svc.files().create(
-        body={"name": "_vielbunt_ig_tmp.png"},
+        body={"name": "_vielbunt_ig_tmp.png", "parents": [POSTER_DRIVE_FOLDER_ID]},
         media_body=media,
         fields="id",
+        supportsAllDrives=True,
     ).execute()
     tmp_id = tmp["id"]
 
     # Make it public
-    svc.permissions().create(
+    link = svc.permissions().create(
         fileId=tmp_id,
         body={"type": "anyone", "role": "reader"},
+        fields="id",
+        supportsAllDrives=True,
     ).execute()
 
     image_url = f"https://drive.google.com/uc?export=view&id={tmp_id}"
@@ -212,11 +250,19 @@ def step_post_instagram():
         print(f"    ✓ Instagram post created (id={publish.json().get('id')})\n")
 
     finally:
-        # Always clean up the temp Drive file
+        # Temp-Datei immer aufräumen. In geteilten Ablagen darf nicht jede Rolle endgültig
+        # löschen, darum erst den öffentlichen Link weg, dann löschen oder in den Papierkorb.
         try:
-            svc.files().delete(fileId=tmp_id).execute()
+            svc.permissions().delete(fileId=tmp_id, permissionId=link["id"], supportsAllDrives=True).execute()
+        except Exception as e:
+            print(f"    ⚠️  Öffentlicher Link der Temp-Datei {tmp_id} ließ sich nicht entfernen: {e}")
+        try:
+            svc.files().delete(fileId=tmp_id, supportsAllDrives=True).execute()
         except Exception:
-            pass
+            try:
+                svc.files().update(fileId=tmp_id, body={"trashed": True}, supportsAllDrives=True).execute()
+            except Exception as e:
+                print(f"    ⚠️  Temp-Datei {tmp_id} bitte von Hand löschen: {e}")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────

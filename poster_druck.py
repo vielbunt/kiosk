@@ -16,7 +16,8 @@ Aufruf zum Testen: python3 poster_druck.py  → schreibt das PDF neben poster.pn
 import io
 import json
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from PIL import Image
@@ -61,7 +62,7 @@ def pruefe_naht(img: Image.Image, y: int) -> None:
 
 def termin_zeitraum(daten: list[str], heute: date | None = None) -> tuple[date, date]:
     """Liest '14.09.' aus den Datums-Labels. Das Jahr steht nicht drin, also ab heute schätzen."""
-    heute = heute or date.today()
+    heute = heute or datetime.now(ZoneInfo("Europe/Berlin")).date()  # auch in der Cloud (UTC) das Darmstädter Datum
     tage = []
     for label in daten:
         m = re.search(r"(\d{1,2})\.(\d{1,2})\.", label)
