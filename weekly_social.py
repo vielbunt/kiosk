@@ -11,6 +11,8 @@ Steps:
   4. Post socialmedia.png to the vielbunt Instagram account
 
   python3 weekly_social.py --nur-poster   → only steps 1 and 2, nothing gets posted
+  python3 weekly_social.py --probe        → Probelauf: Bilder und PDF bauen, Drive- und Meta-Zugang
+                                            prüfen, aber nix hochladen und nix posten
 """
 
 import os
@@ -267,7 +269,34 @@ def step_post_instagram():
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
+def probe():
+    """Prüft alles, was in der Cloud schiefgehen kann, ohne etwas zu veröffentlichen."""
+    print("🧪  Probelauf, es wird nichts hochgeladen oder gepostet\n")
+    step_screenshots()
+    from poster_druck import erstelle_druck_pdf
+    pdf = erstelle_druck_pdf()
+    print(f"    ✓ PDF gebaut: {pdf.name}")
+    ok = True
+    svc = _drive_service()
+    try:
+        meta = svc.files().get(fileId=POSTER_DRIVE_FOLDER_ID, fields="name,capabilities(canAddChildren)",
+                               supportsAllDrives=True).execute()
+        print(f"    ✓ Drive: Ordner \"{meta['name']}\", darf hochladen: {meta['capabilities']['canAddChildren']}")
+    except Exception:
+        # Mit dem alten OAuth-Token (drive.file) sieht man den Ordner grundsätzlich nicht
+        print("    ✗ Drive: Poster-Ordner nicht sichtbar. In der Cloud braucht der Service-Account Zugriff.")
+        ok = False
+    _page_access_token()
+    print("    ✓ Meta: Seiten-Token geholt")
+    if not ok:
+        sys.exit("❌  Probelauf mit Fehlern")
+    print("✅  Probelauf ok")
+
+
 def main():
+    if "--probe" in sys.argv:
+        probe()
+        return
     print("🚀  vielbunt weekly social media routine\n")
     step_screenshots()
     step_upload_poster()
