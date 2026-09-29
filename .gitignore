@@ -13,3 +13,5 @@ poster_layout.json
 *credentials*.json
 meta_config*.py
 !meta_config_template.py
+__pycache__/
+*.pyc
