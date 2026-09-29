@@ -190,6 +190,25 @@ def veroeffentlichen(bilder: list[str], text: str, token: str, titel: str = "") 
 
 # ── Ablauf ─────────────────────────────────────────────────────────────────
 
+def lebenszeichen_pruefen(sh, sid, jetzt) -> None:
+    """Warnt einmal am Tag, wenn die lokale Routine vielbunt-daily länger als 26 Stunden nicht lief."""
+    try:
+        werte = sh.values().get(spreadsheetId=sid, range="'Vorbereitung'!B6:C6").execute().get("values", [[]])[0]
+    except Exception:
+        return  # Tab fehlt: nix zu prüfen
+    zuletzt = werte[0] if werte else ""
+    gemeldet = werte[1] if len(werte) > 1 else ""
+    try:
+        seit = jetzt - datetime.strptime(zuletzt, "%Y-%m-%d %H:%M").replace(tzinfo=BERLIN)
+    except ValueError:
+        return
+    if seit > timedelta(hours=26) and gemeldet != f"{jetzt:%Y-%m-%d}":
+        print(f"⚠️  vielbunt-daily ist seit {zuletzt} nicht gelaufen (Mac aus oder Claude-App zu?). "
+              "Bis zum nächsten Lauf werden keine Plakate gebaut und keine neuen Beiträge eingeplant.")
+        sh.values().update(spreadsheetId=sid, range="'Vorbereitung'!C6", valueInputOption="RAW",
+                           body={"values": [[f"{jetzt:%Y-%m-%d}"]]}).execute()
+
+
 def main():
     trocken = "--dry" in sys.argv
     jetzt = datetime.now(BERLIN)
@@ -246,6 +265,8 @@ def main():
         except Exception as fehler:
             print(f"    (Status nicht gesetzt: {_sauber(fehler)})")
 
+    if not trocken:
+        lebenszeichen_pruefen(sh, sid, jetzt)
     if not faellig:
         print(f"Nichts fällig ({jetzt:%d.%m. %H:%M %Z}).")
 
