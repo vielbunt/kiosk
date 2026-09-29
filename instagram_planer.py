@@ -12,7 +12,9 @@ Cloud-Routine um 9, 15 und 19 Uhr (Darmstädter Zeit).
 
 Sicherungen gegen doppelte Posts: Vor dem Veröffentlichen steht in "Instagram-ID" ein
 "läuft seit ...". Bricht etwas mittendrin ab, wird die Zeile nicht nochmal angefasst, sondern
-gemeldet. Verpasste Posts (mehr als 3 Stunden über der Zeit) werden nur gemeldet, nicht nachgeholt.
+einmal gemeldet (danach steht "[gemeldet]" dahinter). Verpasste Posts (mehr als 3 Stunden über der
+Zeit) werden einmal gemeldet und als "verpasst" vermerkt, nicht nachgeholt. Soll ein Post doch noch
+raus, die Zelle "Instagram-ID" leeren und "Geplant für"/"Uhrzeit" auf einen neuen Termin setzen.
 
 Zugangsdaten aus der Umgebung: META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID,
 GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEETS_SPREADSHEET_ID. Lokal geht auch meta_config.py und
@@ -23,6 +25,7 @@ import base64
 import importlib.util
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -32,7 +35,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 BERLIN = ZoneInfo("Europe/Berlin")
-GRAPH = "https://graph.facebook.com/v20.0"
+GRAPH = "https://graph.facebook.com/v21.0"
 TAB = "Automatik"
 PLAN_TAB = "Formularantworten 1"
 SPAETESTENS = timedelta(hours=3)
@@ -112,8 +115,17 @@ def status_erledigt(sh, sid, canva_url: str) -> None:
 
 # ── Instagram ──────────────────────────────────────────────────────────────
 
+def _auth(token: str) -> dict:
+    # Token im Header statt in der URL, sonst steht er in jeder Fehlermeldung
+    return {"Authorization": f"Bearer {token}"}
+
+def _sauber(text) -> str:
+    """Entfernt Tokens aus Fehlermeldungen (requests hängt die URL samt Parametern an)."""
+    return re.sub(r"((?:access|input)_token=)[^&\s'\"]+", r"\1***", str(text))
+
+
 def seiten_token() -> str:
-    r = requests.get(f"{GRAPH}/me/accounts", params={"access_token": einstellung("META_ACCESS_TOKEN")}, timeout=30)
+    r = requests.get(f"{GRAPH}/me/accounts", headers=_auth(einstellung("META_ACCESS_TOKEN")), timeout=30)
     r.raise_for_status()
     for seite in r.json().get("data", []):
         if seite.get("id") == einstellung("FACEBOOK_PAGE_ID"):
@@ -123,7 +135,7 @@ def seiten_token() -> str:
 
 def _warten(container_id: str, token: str) -> None:
     for _ in range(36):  # bis zu 3 Minuten
-        r = requests.get(f"{GRAPH}/{container_id}", params={"fields": "status_code", "access_token": token}, timeout=30)
+        r = requests.get(f"{GRAPH}/{container_id}", params={"fields": "status_code"}, headers=_auth(token), timeout=30)
         r.raise_for_status()
         status = r.json().get("status_code")
         if status == "FINISHED":
@@ -135,7 +147,7 @@ def _warten(container_id: str, token: str) -> None:
 
 
 def _post(pfad: str, token: str, **daten) -> str:
-    r = requests.post(f"{GRAPH}/{pfad}", data={**daten, "access_token": token}, timeout=60)
+    r = requests.post(f"{GRAPH}/{pfad}", data=daten, headers=_auth(token), timeout=60)
     if not r.ok:
         raise RuntimeError(f"Instagram-Fehler {r.status_code}: {r.text}")
     return r.json()["id"]
@@ -191,8 +203,11 @@ def main():
         if e.get("Art") != "beitrag" or not e.get("Bilder"):
             continue  # ältere Einträge ohne Bilder hat Jan noch von Hand auf Instagram gebracht
         if ig.startswith(("läuft", "Fehler")):
-            print(f"⚠️  Zeile {nr} ({e['Titel']}): '{ig}'. Bitte auf Instagram prüfen "
-                  "und die Zelle von Hand leeren, falls nochmal gepostet werden soll.")
+            # nur einmal melden, sonst kommt 6x am Tag dieselbe Push-Nachricht
+            if "[gemeldet]" not in ig and not trocken:
+                print(f"⚠️  Zeile {nr} ({e['Titel']}): '{ig}'. Bitte auf Instagram prüfen "
+                      "und die Zelle von Hand leeren, falls nochmal gepostet werden soll.")
+                schreibe(sh, sid, kopf, nr, "Instagram-ID", f"{ig} [gemeldet]")
             continue
         if ig:
             continue
@@ -205,6 +220,8 @@ def main():
             continue
         if jetzt - geplant > SPAETESTENS:
             print(f"⚠️  Verpasst: {e['Titel']} war für {geplant:%d.%m. %H:%M} geplant. Nicht nachgeholt.")
+            if not trocken:  # vermerken, damit es nur einmal gemeldet wird
+                schreibe(sh, sid, kopf, nr, "Instagram-ID", f"verpasst (geplant {geplant:%d.%m. %H:%M})")
             continue
 
         faellig += 1
@@ -219,15 +236,15 @@ def main():
         try:
             ig_id = veroeffentlichen(bilder, e.get("Text", ""), token, e.get("Titel", ""))
         except Exception as fehler:
-            schreibe(sh, sid, kopf, nr, "Instagram-ID", f"Fehler {jetzt:%Y-%m-%d %H:%M}: {str(fehler)[:200]}")
-            print(f"    ✗ {fehler}")
+            schreibe(sh, sid, kopf, nr, "Instagram-ID", f"Fehler {jetzt:%Y-%m-%d %H:%M}: {_sauber(fehler)[:200]}")
+            print(f"    ✗ {_sauber(fehler)}")
             continue
         schreibe(sh, sid, kopf, nr, "Instagram-ID", ig_id)
         print(f"    ✓ Instagram-Post {ig_id}")
         try:
             status_erledigt(sh, sid, e["Schlüssel"])
         except Exception as fehler:
-            print(f"    (Status nicht gesetzt: {fehler})")
+            print(f"    (Status nicht gesetzt: {_sauber(fehler)})")
 
     if not faellig:
         print(f"Nichts fällig ({jetzt:%d.%m. %H:%M %Z}).")

@@ -16,6 +16,7 @@ Steps:
 """
 
 import os
+import re
 import sys
 import time
 import subprocess
@@ -74,7 +75,7 @@ def _page_access_token():
     """Exchange the system-user token for a page access token."""
     resp = requests.get(
         "https://graph.facebook.com/v20.0/me/accounts",
-        params={"access_token": META_ACCESS_TOKEN},
+        headers={"Authorization": f"Bearer {META_ACCESS_TOKEN}"},  # nicht in die URL, sonst landet er in Fehlermeldungen
     )
     resp.raise_for_status()
     pages = resp.json().get("data", [])
@@ -197,7 +198,8 @@ def step_post_instagram():
         for attempt in range(24):  # up to ~2 minutes
             status_r = requests.get(
                 f"https://graph.facebook.com/v20.0/{creation_id}",
-                params={"fields": "status_code", "access_token": page_token},
+                params={"fields": "status_code"},
+                headers={"Authorization": f"Bearer {page_token}"},
             )
             status_r.raise_for_status()
             status_code = status_r.json().get("status_code")
@@ -305,14 +307,20 @@ def probe():
     print("✅  Probelauf ok")
 
 
+def _sauber(text) -> str:
+    """Entfernt Tokens aus Fehlermeldungen (requests hängt die URL samt Parametern an)."""
+    return re.sub(r"((?:access|input)_token=)[^&\s'\"]+", r"\1***", str(text))
+
+
 def meta_token_pruefen(tage: int = 14) -> None:
     """Warnt, wenn der Meta-Token bald abläuft (steht dann im Bericht der Routine)."""
     from datetime import datetime, timedelta, timezone
     try:
         daten = requests.get("https://graph.facebook.com/v20.0/debug_token", params={
-            "input_token": META_ACCESS_TOKEN, "access_token": META_ACCESS_TOKEN}, timeout=30).json().get("data", {})
+            "input_token": META_ACCESS_TOKEN}, headers={"Authorization": f"Bearer {META_ACCESS_TOKEN}"},
+            timeout=30).json().get("data", {})
     except Exception as e:
-        print(f"⚠️  Meta-Token nicht prüfbar: {e}")
+        print(f"⚠️  Meta-Token nicht prüfbar: {_sauber(e)}")
         return
     if not daten.get("is_valid", False):
         print("⚠️  META-TOKEN ist ungültig, bitte erneuern.")
