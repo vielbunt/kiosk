@@ -6,3 +6,10 @@ meta_config.py
 /__pycache__
 poster_layout.json
 *.pdf
+# Sicherheitsnetz für Zugangsdaten
+*.env
+*service_account*.json
+*token*.json
+*credentials*.json
+meta_config*.py
+!meta_config_template.py

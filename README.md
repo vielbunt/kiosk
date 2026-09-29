@@ -67,6 +67,9 @@ Die werden nicht mehr benutzt.
 | `screenshot_socialmedia.py` | `kiosk.html?mode=socialmedia` als `socialmedia.png` (1080×1350) |
 | `screenshot_poster.py` | Plakatfassung als `poster.png` (5400×6750, für A2) |
 | `poster_druck.py` | macht aus `poster.png` ein Druck-PDF aus zwei A3-Seiten, die Naht liegt nie in einem Termin |
+| `instagram_planer.py` | postet die vom Scheduler (postergenerator-Repo) eingeplanten Beiträge zur gleichen Zeit wie Facebook auf Instagram, liest dafür den Tab "Automatik" des Redaktionsplans |
+| `browser_start.py` | startet Chromium für die Screenshots; in der Cloud holt Python die Daten der Seite (Proxy) |
+| `cloud/zeitfenster.py` | lässt eine Cloud-Routine nur zur richtigen Darmstädter Uhrzeit weiterlaufen (Sommer/Winter) |
 | `meta_config_template.py` | Vorlage für `meta_config.py` mit den Meta-Zugangsdaten (die echte Datei ist in `.gitignore`) |
 
 Erzeugte Bilder, PDFs und `poster_layout.json` sind ebenfalls in `.gitignore`.
@@ -78,3 +81,11 @@ python3 -m http.server 7654
 ```
 
 Dann http://localhost:7654/kiosk.html, `/kiosk-show.html` oder `/kiosk-lite/kiosk-lite.html` öffnen.
+
+## Cloud
+
+`weekly_social.py` und `instagram_planer.py` laufen als Claude-Cloud-Routinen ("vielbunt weekly social",
+"vielbunt Instagram"). Zugangsdaten kommen dort aus Umgebungsvariablen (`META_ACCESS_TOKEN`,
+`FACEBOOK_PAGE_ID`, `INSTAGRAM_ACCOUNT_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`), lokal aus `meta_config.py` und
+dem postergenerator-Repo. `python3 weekly_social.py --probe` prüft alles, ohne etwas zu veröffentlichen.
+Übersicht aller Routinen: `cloud/routinen.md` im postergenerator-Repo.

@@ -172,17 +172,17 @@ def step_post_instagram():
     ).execute()
     tmp_id = tmp["id"]
 
-    # Make it public
-    link = svc.permissions().create(
-        fileId=tmp_id,
-        body={"type": "anyone", "role": "reader"},
-        fields="id",
-        supportsAllDrives=True,
-    ).execute()
-
     image_url = f"https://drive.google.com/uc?export=view&id={tmp_id}"
+    link = None
 
     try:
+        # Öffentlich machen. Steht im try, damit die Temp-Datei auch bei einem Fehler hier aufgeräumt wird.
+        link = svc.permissions().create(
+            fileId=tmp_id,
+            body={"type": "anyone", "role": "reader"},
+            fields="id",
+            supportsAllDrives=True,
+        ).execute()
         page_token = _page_access_token()
         # Create media container
         container = requests.post(
@@ -225,7 +225,8 @@ def step_post_instagram():
         # Temp-Datei immer aufräumen. In geteilten Ablagen darf nicht jede Rolle endgültig
         # löschen, darum erst den öffentlichen Link weg, dann löschen oder in den Papierkorb.
         try:
-            svc.permissions().delete(fileId=tmp_id, permissionId=link["id"], supportsAllDrives=True).execute()
+            if link:
+                svc.permissions().delete(fileId=tmp_id, permissionId=link["id"], supportsAllDrives=True).execute()
         except Exception as e:
             print(f"    ⚠️  Öffentlicher Link der Temp-Datei {tmp_id} ließ sich nicht entfernen: {e}")
         try:
