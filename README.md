@@ -74,6 +74,16 @@ Die werden nicht mehr benutzt.
 
 Erzeugte Bilder, PDFs und `poster_layout.json` sind ebenfalls in `.gitignore`.
 
+## Auf vielbunt.org hochladen
+
+`./deploy.sh kiosk` baut `kiosk-show.html` neu und lädt sie als `vielbunt.org/kiosk.html` hoch,
+`./deploy.sh queerbar` macht das Gleiche mit dem Queerbar-Kiosk (`~/Downloads/queerbar-kiosk`).
+`./deploy.sh probe` zeigt nur den Stand auf dem Server. Vorher wird die alte Datei nach `deploy-backups/`
+gesichert, danach prüft das Skript, ob die Seite wirklich die neue Datei ausliefert.
+
+Server und Benutzer stehen in `deploy.env` (nicht im Repo, Vorlage `deploy.env.example`), das Passwort
+nur im macOS-Schlüsselbund. Wie man es anlegt, steht oben in `deploy.sh`.
+
 ## Lokal ansehen
 
 ```
