@@ -456,8 +456,9 @@
     <script>
         const WP_API_URL = 'https://www.vielbunt.org/wp-json/wp/v2/posts';
         const ICS_URL = 'https://shy-recipe-d443.me-02a.workers.dev/';
-        // Auf- und Abbau (Queerbar, Truss, Herbstball ...) ist Sache der Helfer*innen, nicht fürs Publikum
-        const AUF_ABBAU = /\b(?:auf|ab)bau(?:en)?\b/i;
+        // Termine, die nicht fürs Publikum sind und nirgends auftauchen: Auf- und Abbau (Queerbar, Truss ...),
+        // alles mit "intern", Blocker und Vormerkungen, Klausuren, Kassensachen, Inventur, abgesagte Termine
+        const AUSBLENDEN = /\b(?:auf|ab)bau(?:en)?\b|\bintern(?:e[nrs]?)?\b|^\W*(?:blocker|vormerkung)\b|klausur|kassen(?:prüfung|übergabe|meeting)|\babrechnung\b|\binventur\b|abgesagt/i;
 
         let slidesData = [];
         let currentSlideIndex = 0;
@@ -737,8 +738,8 @@
                 const cls = (e.cls || 'PUBLIC').toUpperCase();
                 if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL') return;
 
-                // Aufbau/Abbau-Termine tauchen nirgends auf (Kiosk, Social Media, Plakat)
-                if (AUF_ABBAU.test(e.summary || '')) return;
+                // interne Termine tauchen nirgends auf (Kiosk, Social Media, Plakat)
+                if (AUSBLENDEN.test(e.summary || '')) return;
 
                 // Skip non-recurring events that ended more than 30 days ago
                 if (!e.rrule && !e.recurrenceId && e.start < staleThreshold) return;
@@ -886,8 +887,10 @@
                 'Vorstandssitzung', 'Jugendvorstand',
                 'UAG', 'AG', 'UAK', 'AK', 'JV', 'HA', 'AKÖ'
             ];
+            // auch grau, obwohl ohne AG/AK im Namen: eher was für Mitglieder und Netzwerk als fürs Publikum
+            const INTERNAL_GRAU = /mitgliederversammlung|renovierung|runder tisch/i;
             const isInternal = summary =>
-                INTERNAL_KEYWORDS.some(kw => summary.includes(kw));
+                INTERNAL_KEYWORDS.some(kw => summary.includes(kw)) || INTERNAL_GRAU.test(summary);
 
             // Build the 7-day window starting from today (or from next Monday in poster mode)
             const _win0 = new Date();
