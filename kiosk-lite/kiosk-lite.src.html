@@ -181,6 +181,8 @@
             if (!e.start) continue;
             const cls = (e.cls || 'PUBLIC').toUpperCase();
             if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL') continue;
+            // Auf- und Abbau (Queerbar usw.) ist Sache der Helfer*innen, wie im grossen Kiosk
+            if (/\b(?:auf|ab)bau(?:en)?\b/i.test(e.summary || '')) continue;
             if (!e.rrule) {
                 if (e.start >= day0 && e.start <= until && !(e.ex && e.ex.includes(e.start.getTime())))
                     out.push({ summary: e.summary, start: e.start });

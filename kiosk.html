@@ -456,6 +456,8 @@
     <script>
         const WP_API_URL = 'https://www.vielbunt.org/wp-json/wp/v2/posts';
         const ICS_URL = 'https://shy-recipe-d443.me-02a.workers.dev/';
+        // Auf- und Abbau (Queerbar, Truss, Herbstball ...) ist Sache der Helfer*innen, nicht fürs Publikum
+        const AUF_ABBAU = /\b(?:auf|ab)bau(?:en)?\b/i;
 
         let slidesData = [];
         let currentSlideIndex = 0;
@@ -734,6 +736,9 @@
                 // Skip private and confidential events (Sichtbarkeit = vertraulich)
                 const cls = (e.cls || 'PUBLIC').toUpperCase();
                 if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL') return;
+
+                // Aufbau/Abbau-Termine tauchen nirgends auf (Kiosk, Social Media, Plakat)
+                if (AUF_ABBAU.test(e.summary || '')) return;
 
                 // Skip non-recurring events that ended more than 30 days ago
                 if (!e.rrule && !e.recurrenceId && e.start < staleThreshold) return;
