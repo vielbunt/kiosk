@@ -28,7 +28,7 @@ URL-Parameter:
 
 ### kiosk-show.html
 
-Wird nicht von Hand bearbeitet, sondern im Projekt vielbunt-motion (`~/Downloads/vielbunt-motion`)
+Wird nicht von Hand bearbeitet, sondern im Unterordner `vielbunt-motion/`
 mit `npm run kiosk` aus `kiosk.html` und `vielbunt-loop.html` gebaut und hier abgelegt. Zwischen den
 Slides laufen Animationen aus dem Loop, jedes dritte Mal kommt stattdessen die Terminübersicht. Alle
 Modi von `kiosk.html` funktionieren weiter. Zusätzliche Parameter: `dauer` (Sekunden je Slide, 20),
@@ -77,7 +77,7 @@ Erzeugte Bilder, PDFs und `poster_layout.json` sind ebenfalls in `.gitignore`.
 ## Auf vielbunt.org hochladen
 
 `./deploy.sh kiosk` baut `kiosk-show.html` neu und lädt sie als `vielbunt.org/kiosk.html` hoch,
-`./deploy.sh queerbar` macht das Gleiche mit dem Queerbar-Kiosk (`~/Downloads/queerbar-kiosk`).
+`./deploy.sh queerbar` macht das Gleiche mit dem Queerbar-Kiosk (Unterordner `queerbar-kiosk/`).
 `./deploy.sh probe` zeigt nur den Stand auf dem Server. Vorher wird die alte Datei nach `deploy-backups/`
 gesichert, danach prüft das Skript, ob die Seite wirklich die neue Datei ausliefert.
 

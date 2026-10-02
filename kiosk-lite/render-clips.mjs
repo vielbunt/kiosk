@@ -9,12 +9,12 @@
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-// vielbunt-loop liegt im eigenen Projekt vielbunt-motion
-const LOOP = process.env.VB_LOOP || join(homedir(), 'Downloads/vielbunt-motion/vielbunt-loop.html');
+// vielbunt-loop wird in vielbunt-motion/ hier im Repo gebaut (npm run build)
+const LOOP = process.env.VB_LOOP || join(HERE, '..', 'vielbunt-motion', 'vielbunt-loop.html');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const [W, H] = (process.env.SIZE || '1280x800').split('x').map(Number);
 const FPS = Number(process.env.FPS) || 30;

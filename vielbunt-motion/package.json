@@ -1,0 +1,14 @@
+{
+  "name": "vielbunt-loop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Motion-Design im vielbunt-Stil: Intros, Wartebildschirme, Event-Loops",
+  "scripts": {
+    "build": "node build.mjs",
+    "kiosk": "node build.mjs && node build-kiosk.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "rrule": "^2.8.1"
+  }
+}

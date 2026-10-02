@@ -18,8 +18,8 @@ cd "$(dirname "$0")"
 [ -f deploy.env ] || { echo "deploy.env fehlt (Vorlage: deploy.env.example)" >&2; exit 1; }
 source deploy.env
 : "${FTP_HOST:?}" "${FTP_USER:?}" "${FTP_DIR:?}" "${SITE_URL:?}"
-VIELBUNT_MOTION="${VIELBUNT_MOTION:-$HOME/Downloads/vielbunt-motion}"
-QUEERBAR_KIOSK="${QUEERBAR_KIOSK:-$HOME/Downloads/queerbar-kiosk}"
+VIELBUNT_MOTION="${VIELBUNT_MOTION:-$PWD/vielbunt-motion}"
+QUEERBAR_KIOSK="${QUEERBAR_KIOSK:-$PWD/queerbar-kiosk}"
 
 ziel="${1:-}"
 build=1

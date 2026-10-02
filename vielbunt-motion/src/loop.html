@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vielbunt loop</title>
+<meta name="description" content="Motion Design im vielbunt-Stil für Videos, Intros und Wartebildschirme">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Crect width='60' height='60' fill='%23fff'/%3E%3Cpath d='M6 54V38a4 4 0 0 1 8 0v16z' fill='%23E6175F'/%3E%3Cpath d='M17 54V28a4 4 0 0 1 8 0v26z' fill='%23FFCB03'/%3E%3Cpath d='M28 54V16a4 4 0 0 1 8 0v38z' fill='%2341B73D'/%3E%3Cpath d='M39 54V28a4 4 0 0 1 8 0v26z' fill='%2313A3DC'/%3E%3Cpath d='M50 54V38a4 4 0 0 1 8 0v16z' fill='%236546B4'/%3E%3C/svg%3E">
+<style>/*CSS*/
+body { display: grid; place-items: center; background: #0b0b0d; }
+body.checker { background: repeating-conic-gradient(#2a2a2e 0 25%, #1d1d21 0 50%) 0 0 / 28px 28px; }
+canvas#c { display: block; box-shadow: 0 0 60px rgba(0,0,0,.5); }
+body.idle, body.idle * { cursor: none !important; }
+.m-hint { font-size: 12px; color: var(--muted); margin: -4px 0 12px; line-height: 1.45; }
+.m-styles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+.m-style { border: 0; height: 40px; font: inherit; font-weight: 700; font-size: 12px; cursor: pointer; outline: 2px solid transparent; outline-offset: 2px; }
+.m-style.on { outline-color: #fff; }
+.m-presets { grid-template-columns: repeat(3, 1fr); }
+body.rec::after {
+  content: 'REC'; position: fixed; top: 14px; left: 14px; z-index: 50; font-weight: 700; font-size: 13px;
+  color: #fff; background: #E6175F; padding: 4px 10px; letter-spacing: .12em;
+}
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<aside id="menu" aria-label="Einstellungen"></aside>
+<div id="toast"></div>
+<script>/*JS*/</script>
+</body>
+</html>

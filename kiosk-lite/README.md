@@ -42,7 +42,7 @@ node kiosk-lite/render-clips.mjs skyline:nacht herzen:pink    # nur einzelne Sze
 ```
 
 Die Animationen kommen aus `vielbunt-loop.html` im Projekt vielbunt-motion, standardmäßig unter
-`~/Downloads/vielbunt-motion/`, sonst per `VB_LOOP=/pfad/zu/vielbunt-loop.html`. Wer den Loop ändert,
+`../vielbunt-motion/` hier im Repo, sonst per `VB_LOOP=/pfad/zu/vielbunt-loop.html`. Wer den Loop ändert,
 rendert danach die Clips neu. Chrome nimmt sie selbst auf (MediaRecorder), ffmpeg wird nicht gebraucht.
 Neue oder umbenannte Clips auch in `kiosk-config.js` eintragen. Durchsehen:
 

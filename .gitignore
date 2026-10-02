@@ -16,3 +16,14 @@ meta_config*.py
 __pycache__/
 *.pyc
 /deploy-backups
+
+# vielbunt-motion und queerbar-kiosk: Cera Pro ist lizenziert und gehoert nicht in ein oeffentliches Repo,
+# Fotos von Menschen auch nicht. Beides liegt nur lokal, gebaute Einzeldateien (mit eingebetteter Schrift) ebenso.
+node_modules/
+**/fonts/*.woff
+**/fonts/*.woff2
+**/fonts/*.otf
+**/fonts/*.ttf
+/vielbunt-motion/vielbunt-loop.html
+/queerbar-kiosk/dist/
+/queerbar-kiosk/assets/

@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="de" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="google" content="notranslate">
+<title>Queer Bar Kiosk</title>
+<meta name="description" content="Bildschirm für die Queer Bar von vielbunt e.V., Inhalte kommen live aus dem Google Sheet.">
+<style>
+  /* Cera Pro Black liegt nicht auf vielbunt.org, deshalb stecken beide Schnitte beim Bauen direkt in der Datei */
+  @font-face {
+    font-family: "Cera Pro";
+    font-weight: 800;
+    font-display: block;
+    src: url("fonts/Cera-Pro-Bold.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Cera Pro";
+    font-weight: 900;
+    font-display: block;
+    src: url("fonts/Cera-Pro-Black.woff2") format("woff2");
+  }
+
+  :root {
+    /* offizielle vielbunt-Farben */
+    --pink: #E6175F;
+    --white: #FFFFFF;
+    --black: #000000;
+    --cream: #FFF3F7;
+    --purple: #6546B4;
+    --blue: #13A3DC;
+    --green: #41B73D;
+    --yellow: #FFCB03;
+    --orange: #F59C00;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: "Cera Pro", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-weight: 800;
+    color: var(--white);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
+  }
+  body.hide-cursor, body.hide-cursor * { cursor: none !important; }
+
+  /* Alles wird auf 1920 Pixel Breite gebaut und dann skaliert. Die Höhe passt sich dem Bildschirm an. */
+  #stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    transform-origin: 0 0;
+    overflow: hidden;
+    background: #000;
+  }
+  #slides, #wipe {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    overflow: hidden;
+  }
+  #wipe { display: none; z-index: 5; pointer-events: none; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .abs { position: absolute; }
+  .blk {
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 0.9;
+    letter-spacing: -0.035em;
+    white-space: nowrap;
+  }
+  .nocase { text-transform: none; }
+  /* Umrandung außen wie im Poster: Kontur doppelt so dick, schwarze Füllung liegt drüber */
+  .outline {
+    color: #000;
+    -webkit-text-stroke: 0.075em var(--pink);
+    paint-order: stroke fill;
+  }
+  .pink { color: var(--pink); }
+  .ib { display: inline-block; }
+
+  /* Zeile mit Maske, der Text fährt von unten rein. Innenabstand, damit Umlaute und Kontur nicht abgeschnitten werden */
+  .ln {
+    display: block;
+    overflow: hidden;
+    padding: 0.14em 0.1em 0.03em;
+    margin: -0.14em -0.1em -0.03em;
+    line-height: 0.9;
+  }
+  .ln > span { display: inline-block; vertical-align: top; }
+
+  /* ---------- Bilder ---------- */
+  .media { position: absolute; overflow: hidden; z-index: 0; }
+  /* linke Kante per Maske ausblenden, ein schwarzer Verlauf allein laesst im Foto eine Kante stehen */
+  .media.fade {
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,0.35) 14%, rgba(0,0,0,0.85) 30%, #000 44%);
+    mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,0.35) 14%, rgba(0,0,0,0.85) 30%, #000 44%);
+  }
+  .media-in { position: absolute; inset: 0; }
+  .media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .media.fade::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background:
+      linear-gradient(0deg, #000 0, rgba(0,0,0,0) 16%),
+      linear-gradient(180deg, rgba(0,0,0,0.5) 0, rgba(0,0,0,0) 12%);
+  }
+
+  /* ---------- kleines Queer-Bar-Logo oben rechts ---------- */
+  .lockup {
+    position: absolute;
+    top: 72px;
+    right: 110px;
+    font-size: 64px;
+    text-align: right;
+    z-index: 3;
+  }
+
+  /* ---------- Karte ---------- */
+  .k-head { position: absolute; color: var(--pink); }
+  .k-head .amp { margin: 0 0.03em; }
+  .k-cols { position: absolute; display: flex; }
+  .k-col { flex: 1 1 0; min-width: 0; }
+  .k-label {
+    font-weight: 900;
+    font-size: 0.42em;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--pink);
+    height: 1.9em;
+    line-height: 1.9em;
+    white-space: nowrap;
+  }
+  .k-gap { height: 0.55em; }
+  .k-item {
+    display: flex;
+    align-items: baseline;
+    height: 1.32em;
+    line-height: 1.32em;
+    white-space: nowrap;
+  }
+  .k-name { font-weight: 800; flex: none; }
+  .k-extra {
+    font-weight: 800;
+    font-size: 0.6em;
+    color: var(--pink);
+    margin-left: 0.45em;
+    flex: none;
+  }
+  .k-dots {
+    flex: 1 1 auto;
+    min-width: 0.8em;
+    align-self: flex-end;
+    height: 0.2em;
+    margin: 0 0.35em 0.4em;
+    background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.34) 0.05em, transparent 0.06em) 0 0 / 0.28em 0.2em repeat-x;
+    transform-origin: 0 50%;
+  }
+  .k-price {
+    font-weight: 900;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .k-item.hot .k-name, .k-item.hot .k-price { color: var(--pink); }
+  .k-item.out { opacity: 0.38; }
+  .k-item.out .k-name {
+    text-decoration: line-through;
+    text-decoration-color: var(--pink);
+    text-decoration-thickness: 0.09em;
+  }
+  .k-foot {
+    position: absolute;
+    display: flex;
+    align-items: baseline;
+    gap: 1.1em;
+    white-space: nowrap;
+    color: var(--pink);
+  }
+  .k-foot .k-label { font-size: 0.5em; height: auto; line-height: 1; margin-right: -0.3em; }
+  .k-foot .k-fi { font-weight: 900; }
+  .k-foot .k-fp { font-weight: 900; margin-left: 0.35em; color: var(--white); }
+  .k-foot .out { opacity: 0.38; text-decoration: line-through; }
+  .ghost {
+    position: absolute;
+    font-weight: 900;
+    line-height: 0.8;
+    color: transparent;
+    -webkit-text-stroke: 4px var(--pink);
+    opacity: 0.16;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* ---------- Motion (Queerbar-Loop) ---------- */
+  .mstack {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .mrow {
+    position: relative;
+    flex: none;
+    height: calc(var(--fs) * 0.8);
+    line-height: calc(var(--fs) * 0.8);
+    font-size: var(--fs);
+    font-weight: 800;
+    text-transform: uppercase;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+  .track {
+    display: inline-flex;
+    will-change: transform;
+    animation: slide var(--dur, 40s) linear infinite;
+    animation-direction: var(--dir, normal);
+  }
+  .word { display: inline-block; padding-right: 0.28em; }
+  .c-white { color: var(--white); }
+  .c-pink { color: var(--pink); }
+  @keyframes slide {
+    from { transform: translate3d(-50%, 0, 0); }
+    to   { transform: translate3d(0, 0, 0); }
+  }
+  .mband {
+    position: relative;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .mlogo {
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 0.86;
+    letter-spacing: -0.035em;
+    color: #000;
+    -webkit-text-stroke: 0.1em var(--pink);
+    paint-order: stroke fill;
+    text-align: center;
+  }
+  .mlogo span { display: block; }
+  .minfo {
+    margin-top: 0.5em;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--white);
+    white-space: nowrap;
+  }
+  .ghostrows { position: absolute; inset: 0; opacity: 0.07; }
+
+  /* ---------- Acts ---------- */
+  .a-names { position: absolute; }
+  .a-info {
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--pink);
+    white-space: nowrap;
+  }
+
+  /* ---------- Info ---------- */
+  .i-text { font-weight: 800; line-height: 1.2; }
+
+  /* ---------- Bild ---------- */
+  .b-bg {
+    position: absolute;
+    inset: -80px;
+    background-size: cover;
+    background-position: center;
+    filter: blur(60px) brightness(0.35) saturate(1.3);
+  }
+  .b-fg {
+    position: absolute;
+    inset: 40px;
+    width: calc(100% - 80px);
+    height: calc(100% - 80px);
+    object-fit: contain;
+  }
+
+  /* ---------- Streifen-Übergang ---------- */
+  .wrow { position: absolute; left: 0; width: 1920px; overflow: hidden; will-change: transform; }
+  .wtrack {
+    display: inline-flex;
+    font-weight: 900;
+    text-transform: uppercase;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+    will-change: transform;
+  }
+
+  /* ---------- Laufband unten ---------- */
+  #band {
+    position: absolute;
+    left: 0;
+    width: 1920px;
+    height: 64px;
+    overflow: hidden;
+    background: #000;
+    border-top: 3px solid var(--pink);
+    z-index: 6;
+  }
+  .btrack {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 61px;
+    line-height: 63px;
+    display: inline-flex;
+    white-space: nowrap;
+    font-size: 32px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    will-change: transform;
+    animation: band var(--dur, 60s) linear infinite;
+  }
+  @keyframes band {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(-50%, 0, 0); }
+  }
+  .btrack span { padding-right: 0.9em; }
+  .btrack .dot { color: var(--pink); padding-right: 0.9em; }
+  #vb {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 7;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 44px 0 90px;
+    height: 61px;
+    background: linear-gradient(90deg, rgba(0,0,0,0) 0, #000 70px);
+    color: var(--white);
+  }
+  #vb svg { display: block; height: 28px; width: auto; }
+  #vb.solo { background: none; height: 90px; padding-right: 60px; }
+  #vb.solo svg { height: 34px; opacity: 0.85; }
+  #vb.off { display: none; }
+
+  /* ---------- Hinweise ---------- */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 5vh;
+    transform: translateX(-50%);
+    z-index: 20;
+    font-size: clamp(12px, 1.6vh, 20px);
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--white);
+    background: rgba(0, 0, 0, 0.8);
+    padding: 0.8em 1.4em;
+    border: 2px solid var(--pink);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease-out;
+  }
+  #toast.show { opacity: 1; transition-duration: 0.12s; }
+</style>
+</head>
+<body>
+<template id="vb-logo-tpl"><svg class="vb-logo" viewBox="329.8 25.2 510.3 112" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="vielbunt" style="fill-rule:evenodd;clip-rule:evenodd;"> <g transform="matrix(1,0,0,1,-3196.151167,-536.637119)"> <g transform="matrix(1.500376,0,0,0.663686,3122.514048,463)"> <g transform="matrix(2.119857,0,0,4.426218,-1029.080858,-431.024448)"> <g transform="matrix(45.664868,0,0,49.4417,611.7539,168.551628)"> <path d="M0.404,-0.495L0.279,-0.215L0.154,-0.495L0.012,-0.495L0.257,0.012L0.302,0.012L0.547,-0.495L0.404,-0.495Z" style="fill:currentColor;fill-rule:nonzero;"/> </g> <g transform="matrix(45.664868,0,0,49.4417,635.453966,168.551628)"> <path d="M0.134,-0.592C0.182,-0.592 0.221,-0.628 0.221,-0.675C0.221,-0.723 0.182,-0.759 0.134,-0.759C0.086,-0.759 0.048,-0.723 0.048,-0.675C0.048,-0.628 0.086,-0.592 0.134,-0.592ZM0.067,-0L0.202,-0L0.202,-0.495L0.067,-0.495L0.067,-0Z" style="fill:currentColor;fill-rule:nonzero;"/> </g> <g transform="matrix(45.664868,0,0,49.4417,645.454573,168.551628)"> <path d="M0.531,-0.276C0.531,-0.404 0.437,-0.506 0.298,-0.506C0.152,-0.506 0.039,-0.393 0.039,-0.247C0.039,-0.101 0.153,0.012 0.31,0.012C0.386,0.012 0.452,-0.015 0.508,-0.062L0.452,-0.154C0.412,-0.123 0.368,-0.104 0.314,-0.104C0.242,-0.104 0.191,-0.139 0.175,-0.202L0.522,-0.202C0.526,-0.219 0.531,-0.248 0.531,-0.276ZM0.293,-0.397C0.35,-0.397 0.399,-0.36 0.4,-0.297L0.175,-0.297C0.19,-0.359 0.236,-0.397 0.293,-0.397Z" style="fill:currentColor;fill-rule:nonzero;"/> </g> <g transform="matrix(45.664868,0,0,49.4417,669.611288,168.551628)"> <rect x="0.067" y="-0.75" width="0.135" height="0.75" style="fill:currentColor;fill-rule:nonzero;"/> </g> <g transform="matrix(45.664868,0,0,49.4417,679.611894,168.551628)"> <path d="M0.35,-0.506C0.288,-0.506 0.237,-0.485 0.202,-0.447L0.202,-0.75L0.067,-0.75L0.067,-0L0.191,-0L0.191,-0.061C0.225,-0.015 0.282,0.012 0.35,0.012C0.49,0.012 0.59,-0.098 0.59,-0.247C0.59,-0.396 0.49,-0.506 0.35,-0.506ZM0.325,-0.111C0.263,-0.111 0.2,-0.152 0.2,-0.247C0.2,-0.341 0.262,-0.384 0.325,-0.384C0.395,-0.384 0.453,-0.332 0.453,-0.248C0.453,-0.164 0.396,-0.111 0.325,-0.111Z" style="fill:currentColor;fill-rule:nonzero;"/> </g> <g transform="matrix(45.664868,0,0,49.4417,706.051852,168.551628)"> <path d="M0.291,0.012C0.42,0.012 0.518,-0.078 0.518,-0.218L0.518,-0.495L0.383,-0.495L0.383,-0.207C0.383,-0.149 0.342,-0.112 0.291,-0.112C0.238,-0.112 0.197,-0.149 0.197,-0.207L0.197,-0.495L0.062,-0.495L0.062,-0.218C0.062,-0.078 0.16,0.012 0.291,0.012Z" style="fill:currentColor;fill-rule:nonzero;"/> </g> <g transform="matrix(45.664868,0,0,49.4417,730.254232,168.551628)"> <path d="M0.336,-0.506C0.275,-0.506 0.225,-0.484 0.191,-0.45L0.191,-0.495L0.067,-0.495L0.067,-0L0.202,-0L0.202,-0.289C0.202,-0.346 0.241,-0.385 0.296,-0.385C0.351,-0.385 0.388,-0.346 0.388,-0.289L0.388,-0L0.522,-0L0.522,-0.307C0.522,-0.426 0.452,-0.506 0.336,-0.506Z" style="fill:currentColor;fill-rule:nonzero;"/> </g> <g transform="matrix(45.664868,0,0,49.4417,755.141585,168.551628)"> <path d="M0.321,-0.109C0.259,-0.109 0.229,-0.129 0.229,-0.186L0.229,-0.381L0.369,-0.381L0.369,-0.495L0.229,-0.495L0.229,-0.62L0.094,-0.62L0.094,-0.495L0.016,-0.495L0.016,-0.381L0.094,-0.381L0.094,-0.174C0.094,-0.047 0.17,0.012 0.292,0.012C0.327,0.012 0.357,0.007 0.385,-0L0.385,-0.113C0.359,-0.111 0.337,-0.109 0.321,-0.109Z" style="fill:currentColor;fill-rule:nonzero;"/> </g> </g> </g> </g> </svg></template>
+
+<div id="stage">
+  <div id="slides"></div>
+  <div id="wipe"></div>
+  <div id="band"></div>
+  <div id="vb"></div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- Grundeinstellungen ----------
+
+  const W = 1920;
+  const M = 110;          // Seitenrand
+  const BAND_H = 64;
+  const PINK = "#E6175F";
+  const EASE = "cubic-bezier(.2,.75,.15,1)";
+  const params = new URLSearchParams(location.search);
+  const SHEET_ID = params.get("sheet") || "152xB92pnSdWQGcb8QO9tB1J0yOjslCxOAsFX6Ap9d1k";
+  const GID = { slides: 0, drinks: 1, songs: 2, settings: 3 };
+  const CACHE_KEY = "qb-kiosk-daten";
+
+  // Eingebaute Bilder. Name aus der Spalte Bild -> Datei. Beim Bauen landen die Bilder direkt in der HTML.
+  const ASSETS = {
+    "birne":         { src: "assets/birne.jpg",         motion: "sway", pos: "50% 0%" },
+    "kugel":         { src: "assets/kugel.jpg",         motion: "sway", pos: "50% 0%" },
+    "7jahre":        { src: "assets/7jahre.jpg",        motion: "zoom", pos: "50% 30%" },
+    "janisha-pasta": { src: "assets/janisha-pasta.jpg", motion: "zoom", pos: "50% 18%" },
+    "leo":           { src: "assets/leo.jpg",           motion: "zoom", pos: "50% 22%" }
+  };
+
+  // Stand des Sheets zum Zeitpunkt des Bauens. Greift nur, wenn beim allerersten Start kein Netz da ist.
+  const DEFAULT_CSV = /*@DEFAULT@*/null;
+
+  // Falls der Songs-Tab mal leer ist
+  const FALLBACK_WORDS = ["I Feel Love", "Vogue", "Dancing Queen", "Born This Way", "I Will Survive",
+    "Flirt", "Kiss", "Smalltown Boy", "True Colors", "I'm Coming Out", "Believe", "Toxic",
+    "Padam Padam", "Pink Pony Club", "Waterloo", "Chosen Family", "Queer Joy", "Disco", "YMCA"];
+
+  const PALETTE = ["#FFF3F7", "#F59C00", "#FFCB03", "#13A3DC", "#41B73D", "#E6175F"];
+
+  const stage = document.getElementById("stage");
+  const slidesEl = document.getElementById("slides");
+  const wipeEl = document.getElementById("wipe");
+  const bandEl = document.getElementById("band");
+  const vbEl = document.getElementById("vb");
+  const toastEl = document.getElementById("toast");
+
+  let H = 1080, SH = 1016, scale = 1;
+
+  // ---------- Hilfsfunktionen ----------
+
+  function mk(tag, cls, parent, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const pos = (e, o) => { for (const k in o) e.style[k] = typeof o[k] === "number" ? o[k] + "px" : o[k]; return e; };
+
+  function rng(seed) {
+    return () => {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function shuffled(list, rand) {
+    const a = list.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Schriftgröße so wählen, dass el (inline-block) genau maxW breit wird
+  function fit(el, maxW, minFs, maxFs) {
+    el.style.fontSize = "100px";
+    const w = el.offsetWidth || 1;
+    const fs = clamp(100 * maxW / w, minFs, maxFs);
+    el.style.fontSize = fs + "px";
+    return fs;
+  }
+
+  // Neonröhre zündet: harte Sprünge statt weicher Blende
+  const STEP = "steps(1, end)";
+  const FLICK_ON = [
+    { opacity: 0, offset: 0, easing: STEP }, { opacity: 0.7, offset: 0.12, easing: STEP },
+    { opacity: 0.1, offset: 0.18, easing: STEP }, { opacity: 0.9, offset: 0.3, easing: STEP },
+    { opacity: 0.25, offset: 0.36, easing: STEP }, { opacity: 1, offset: 0.52, easing: STEP },
+    { opacity: 0.55, offset: 0.58, easing: STEP }, { opacity: 1, offset: 0.7 }, { opacity: 1, offset: 1 }
+  ];
+  const FLICK = [
+    { opacity: 1, offset: 0, easing: STEP }, { opacity: 0.08, offset: 0.08, easing: STEP },
+    { opacity: 1, offset: 0.14, easing: STEP }, { opacity: 0.25, offset: 0.22, easing: STEP },
+    { opacity: 0.9, offset: 0.26, easing: STEP }, { opacity: 0.05, offset: 0.4, easing: STEP },
+    { opacity: 1, offset: 0.48, easing: STEP }, { opacity: 0.4, offset: 0.62, easing: STEP },
+    { opacity: 1, offset: 0.68 }, { opacity: 1, offset: 1 }
+  ];
+  const FLICK_SOFT = [
+    { opacity: 1, offset: 0, easing: STEP }, { opacity: 0.45, offset: 0.06, easing: STEP },
+    { opacity: 1, offset: 0.1, easing: STEP }, { opacity: 0.3, offset: 0.38, easing: STEP },
+    { opacity: 0.85, offset: 0.41, easing: STEP }, { opacity: 0.5, offset: 0.44, easing: STEP },
+    { opacity: 1, offset: 0.5 }, { opacity: 1, offset: 1 }
+  ];
+  const FLICK_OFF = [
+    { opacity: 1, offset: 0, easing: STEP }, { opacity: 0.2, offset: 0.15, easing: STEP },
+    { opacity: 0.9, offset: 0.25, easing: STEP }, { opacity: 0.05, offset: 0.45, easing: STEP },
+    { opacity: 0.6, offset: 0.55, easing: STEP }, { opacity: 0, offset: 0.7 }, { opacity: 0, offset: 1 }
+  ];
+
+  function anim(el, frames, opts) {
+    if (!el) return null;
+    return el.animate(frames, Object.assign({ fill: "backwards" }, opts));
+  }
+  // Text fährt von unten aus der Maske
+  function rise(el, delay, dur) {
+    return anim(el, [{ transform: "translateY(110%)" }, { transform: "translateY(0)" }],
+      { duration: dur || 850, delay: delay || 0, easing: EASE });
+  }
+  function fadeUp(el, delay, dist, dur) {
+    return anim(el, [{ opacity: 0, transform: `translateY(${dist || 28}px)` }, { opacity: 1, transform: "translateY(0)" }],
+      { duration: dur || 650, delay: delay || 0, easing: EASE });
+  }
+  function flickOn(el, delay, dur) {
+    return anim(el, FLICK_ON, { duration: dur || 900, delay: delay || 0 });
+  }
+
+  // ---------- Daten ----------
+
+  let data = null;       // aktueller Stand
+  let pending = null;    // neuer Stand, wird beim nächsten Slidewechsel übernommen
+  let lastFetchOk = 0;
+
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], f = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+        else f += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { row.push(f); f = ""; }
+      else if (c === "\n") { row.push(f); rows.push(row); row = []; f = ""; }
+      else if (c !== "\r") f += c;
+    }
+    if (f !== "" || row.length) { row.push(f); rows.push(row); }
+    return rows;
+  }
+  function table(rows) {
+    const head = (rows[0] || []).map(h => h.trim().toLowerCase());
+    return rows.slice(1).map(r => {
+      const o = {};
+      head.forEach((h, i) => { if (h) o[h] = (r[i] == null ? "" : r[i]).trim(); });
+      return o;
+    });
+  }
+  function pick(o, ...keys) {
+    for (const k of keys) for (const h in o) if (h.startsWith(k)) return o[h];
+    return "";
+  }
+  const truthy = v => /^(true|wahr|ja|x|1|✓|✔)$/i.test(String(v || "").trim());
+  function parseNum(v) {
+    const s = String(v == null ? "" : v).trim().replace(/[€\s]/g, "").replace(/[.,]-$/, "");
+    if (!/^\d+([.,]\d+)?$/.test(s)) return null;
+    return parseFloat(s.replace(",", "."));
+  }
+  function parseDate(v) {
+    const s = String(v || "").trim();
+    let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+    if (m) return new Date(+m[3] < 100 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1]);
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    return null;
+  }
+
+  const TYPES = ["claim", "karte", "special", "motion", "acts", "info", "bild"];
+  const TRANS = { blende: "blende", streifen: "streifen", flackern: "flackern" };
+
+  function parseAll(raw) {
+    for (const k of ["slides", "drinks", "songs", "settings"]) {
+      if (typeof raw[k] !== "string" || /^\s*</.test(raw[k])) throw new Error("Tab " + k + " sieht nicht nach CSV aus");
+    }
+    const slideRows = table(parseCSV(raw.slides));
+    if (!slideRows.length || !("typ" in slideRows[0])) throw new Error("Slides-Tab ohne Spalte Typ");
+    const slides = slideRows.map(o => ({
+      aktiv: truthy(pick(o, "aktiv")),
+      typ: pick(o, "typ").toLowerCase(),
+      dauer: parseNum(pick(o, "dauer")),
+      z: [pick(o, "zeile 1"), pick(o, "zeile 2"), pick(o, "zeile 3"), pick(o, "zeile 4")],
+      bild: pick(o, "bild"),
+      kategorien: pick(o, "kategor"),
+      trans: TRANS[pick(o, "übergang", "uebergang").toLowerCase()] || "blende",
+      ab: parseDate(pick(o, "zeigen ab")),
+      bis: parseDate(pick(o, "zeigen bis"))
+    })).filter(s => TYPES.includes(s.typ));
+
+    const drinks = table(parseCSV(raw.drinks)).map(o => ({
+      aktiv: truthy(pick(o, "aktiv")),
+      kat: pick(o, "kategorie"),
+      name: pick(o, "getränk", "getraenk", "name"),
+      extra: pick(o, "zusatz"),
+      preis: pick(o, "preis"),
+      hot: truthy(pick(o, "highlight")),
+      out: truthy(pick(o, "ausverkauft"))
+    })).filter(d => d.name);
+
+    const songs = parseCSV(raw.songs).slice(1).map(r => (r[0] || "").trim()).filter(Boolean);
+
+    const set = {};
+    parseCSV(raw.settings).slice(1).forEach(r => { if (r[0]) set[r[0].trim().toLowerCase()] = (r[1] || "").trim(); });
+    const sget = (...keys) => { for (const k of keys) for (const h in set) if (h.startsWith(k)) return set[h]; return ""; };
+    const bandText = sget("laufband-text", "laufbandtext");
+    let bandMode = "";
+    for (const h in set) if (h === "laufband") bandMode = set[h].toLowerCase();
+    const settings = {
+      band: ["songs", "text", "aus"].includes(bandMode) ? bandMode : "songs",
+      bandText,
+      dauer: parseNum(sget("standard-dauer")) || 10,
+      trans: parseNum(sget("übergangsdauer", "uebergangsdauer")) || 1.25,
+      refresh: Math.max(20, parseNum(sget("aktualisieren")) || 60),
+      vielbunt: sget("vielbunt") === "" ? true : truthy(sget("vielbunt")),
+      euro: truthy(sget("preise mit euro"))
+    };
+    return { slides, drinks, songs: songs.length ? songs : FALLBACK_WORDS, settings };
+  }
+
+  async function fetchTab(gid) {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}&t=${Date.now()}`;
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const r = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.text();
+    } finally { clearTimeout(to); }
+  }
+
+  async function loadSheet() {
+    const [slides, drinks, songs, settings] = await Promise.all(
+      [GID.slides, GID.drinks, GID.songs, GID.settings].map(fetchTab));
+    const raw = { slides, drinks, songs, settings };
+    const parsed = parseAll(raw);   // wirft, wenn etwas nicht stimmt, dann bleibt der alte Stand
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(raw)); } catch (e) { /* egal */ }
+    lastFetchOk = Date.now();
+    return parsed;
+  }
+
+  function cachedData() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (raw) return parseAll(raw);
+    } catch (e) { /* kaputter Cache, dann eben der eingebaute Stand */ }
+    try { if (DEFAULT_CSV) return parseAll(DEFAULT_CSV); } catch (e) { /* weiter */ }
+    return parseAll({
+      slides: "Aktiv,Typ\nTRUE,Motion", drinks: "Aktiv,Kategorie,Getränk", songs: "Song", settings: "Einstellung,Wert"
+    });
+  }
+
+  let refreshTimer = null;
+  async function refresh(announce) {
+    clearTimeout(refreshTimer);
+    try {
+      const d = await loadSheet();
+      pending = d;
+      if (announce) toast("Sheet geladen");
+    } catch (e) {
+      console.warn("Sheet nicht erreichbar, zeige weiter den letzten Stand:", e.message);
+      if (announce) toast("Keine Verbindung, zeige letzten Stand");
+    }
+    const every = ((pending || data) ? (pending || data).settings.refresh : 60) * 1000;
+    refreshTimer = setTimeout(() => refresh(false), every);
+  }
+
+  // Ein Bar-Abend gehört bis 6 Uhr morgens noch zum Vortag
+  function barDay(now) {
+    const d = new Date(now.getTime() - 6 * 3600 * 1000);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function playlist() {
+    const day = barDay(new Date());
+    const nur = (params.get("nur") || "").toLowerCase();
+    let list = data.slides.filter(s => s.aktiv
+      && (!s.ab || s.ab <= day)
+      && (!s.bis || s.bis >= day)
+      && (!nur || s.typ === nur));
+    if (!list.length) list = [{ typ: "motion", z: ["", "", "", ""], trans: "blende", aktiv: true }];
+    return list;
+  }
+
+  function asset(name) {
+    const n = String(name || "").trim();
+    if (!n) return null;
+    const key = n.toLowerCase().replace(/\.(jpe?g|png|webp)$/, "");
+    if (ASSETS[key]) return ASSETS[key];
+    // Google-Drive-Freigabelink in direkte Bildadresse umbauen
+    const drive = n.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/);
+    if (drive) return { src: `https://lh3.googleusercontent.com/d/${drive[1]}=w2400`, motion: "zoom", pos: "50% 40%" };
+    if (/^https?:\/\//.test(n) || /^[\w./-]+\.(jpe?g|png|webp|gif)$/i.test(n)) return { src: n, motion: "zoom", pos: "50% 40%" };
+    return null;
+  }
+
+  function fmtPrice(p) {
+    const n = parseNum(p);
+    if (n == null) return String(p || "");
+    const s = n.toFixed(2).replace(".", ",");
+    return data.settings.euro ? s + " €" : s;
+  }
+
+  // ---------- Bausteine ----------
+
+  // Jede Slide bekommt ein kleines Objekt mit Timern, damit beim Wechsel nichts weiterläuft
+  // Timer laufen erst los, wenn die Slide wirklich zu sehen ist (go)
+  function instance(el) {
+    const timers = [];
+    const queue = [];
+    let live = false;
+    return {
+      el,
+      ready: Promise.resolve(),
+      later(fn, ms) {
+        if (live) timers.push(setTimeout(fn, ms));
+        else queue.push([fn, ms]);
+      },
+      go() {
+        live = true;
+        queue.splice(0).forEach(([fn, ms]) => timers.push(setTimeout(fn, ms)));
+      },
+      stop() { live = false; queue.length = 0; timers.forEach(clearTimeout); timers.length = 0; }
+    };
+  }
+
+  // Bild vorab laden und dekodieren. decode() auf dem versteckten Bild im DOM haengt in Chrome gerne, deshalb ein seperates Image
+  const decoded = new Map();
+  function preload(src) {
+    if (decoded.has(src)) return decoded.get(src);
+    const p = new Promise((res, rej) => {
+      const im = new Image();
+      const to = setTimeout(() => res(), 8000);
+      // decode() bleibt bei manchen JPEGs ewig haengen, deshalb hoechstens 1,5 s darauf warten
+      im.onload = () => {
+        clearTimeout(to);
+        Promise.race([(im.decode ? im.decode() : Promise.resolve()).catch(() => {}), wait(1500)]).then(res);
+      };
+      im.onerror = () => { clearTimeout(to); decoded.delete(src); rej(new Error("Bild fehlt")); };
+      im.src = src;
+    });
+    decoded.set(src, p);
+    return p;
+  }
+
+  function mediaBox(inst, a, box, durMs) {
+    const wrap = pos(mk("div", "media" + (box.fade ? " fade" : ""), inst.el),
+      { left: box.left, top: box.top, width: box.width, height: box.height });
+    const inner = mk("div", "media-in", wrap);
+    const img = new Image();
+    img.decoding = "async";
+    img.alt = "";
+    img.src = a.src;
+    img.style.objectPosition = a.pos || "50% 50%";
+    inner.appendChild(img);
+    inst.ready = preload(a.src).catch(() => { wrap.style.display = "none"; });
+    anim(wrap, [{ opacity: 0 }, { opacity: 1 }], { duration: 1500, delay: 150, easing: "ease-out" });
+    if (a.motion === "sway") {
+      // hängt an der Kette und pendelt leicht
+      inner.style.transformOrigin = "50% 0";
+      inner.animate([{ transform: "rotate(-1.4deg)" }, { transform: "rotate(1.4deg)" }],
+        { duration: 4600, iterations: Infinity, direction: "alternate", easing: "ease-in-out", delay: -2300 });
+    } else {
+      inner.animate([{ transform: "scale(1.1)" }, { transform: "scale(1)" }],
+        { duration: durMs + 2000, easing: "linear", fill: "both" });
+    }
+    return wrap;
+  }
+
+  function lockup(parent) {
+    const l = mk("div", "lockup blk outline", parent);
+    mk("div", null, l, "Queer");
+    mk("div", null, l, "Bar");
+    return l;
+  }
+
+  // Überschrift, bei der jedes & umrandet wird
+  function ampText(parent, text) {
+    const parts = String(text).split(/\s*&\s*/);
+    parts.forEach((p, i) => {
+      if (i) mk("span", "amp outline", parent, "&");
+      if (p) parent.appendChild(document.createTextNode(p));
+    });
+  }
+
+  function idleFlicker(inst, els, lo, hi) {
+    const list = els.filter(Boolean);
+    if (!list.length) return;
+    const tick = () => {
+      const e = list[Math.floor(Math.random() * list.length)];
+      anim(e, Math.random() < 0.7 ? FLICK_SOFT : FLICK, { duration: 700 + Math.random() * 500, fill: "none" });
+      inst.later(tick, lo + Math.random() * (hi - lo));
+    };
+    inst.later(tick, 2600 + Math.random() * 1500);
+  }
+
+  // Tickerzeile wie im Queerbar-Loop
+  function makeRow(parent, index, pool, rand, fs, cls) {
+    const row = mk("div", "mrow " + (cls || ""), parent);
+    row.setAttribute("aria-hidden", "true");
+    const track = mk("div", "track", row);
+    let pink = index % 2 === 1;
+    const seq = [];
+    let k = 0;
+    while (track.scrollWidth < W * 1.15 || seq.length < 3) {
+      seq.push(mk("span", "word " + (pink ? "c-pink" : "c-white"), track, pool[(index * 7 + k) % pool.length]));
+      pink = !pink;
+      if (++k > 60) break;
+    }
+    if (seq.length % 2 === 1) {
+      seq.push(mk("span", "word " + (pink ? "c-pink" : "c-white"), track, pool[(index * 7 + k) % pool.length]));
+    }
+    seq.forEach(s => track.appendChild(s.cloneNode(true)));
+    const half = track.scrollWidth / 2;
+    const speed = fs * (0.45 + rand() * 0.45);
+    track.style.setProperty("--dur", (half / speed).toFixed(2) + "s");
+    track.style.setProperty("--dir", index % 2 === 0 ? "normal" : "reverse");
+    track.style.animationDelay = (-rand() * half / speed).toFixed(2) + "s";
+    return row;
+  }
+
+  // ---------- Module ----------
+
+  const BUILD = {};
+
+  // Vier große Zeilen wie im Poster, Zeile 2 und 3 pink umrandet, Bild rechts
+  BUILD.claim = (s, inst, dur) => {
+    const a = asset(s.bild);
+    const lines = s.z.map((t, i) => ({ t: (t || "").trim(), outline: i === 1 || i === 2 })).filter(l => l.t);
+    if (!lines.length && !a) return false;
+    if (a) mediaBox(inst, a, { left: W * 0.56, top: 0, width: W * 0.44, height: SH, fade: true }, dur);
+    if (!lines.length) return true;
+
+    const box = mk("div", "abs", inst.el);
+    box.style.fontSize = "100px";
+    const items = lines.map(l => {
+      const ln = mk("div", "ln", box);
+      const sp = mk("span", "blk" + (l.outline ? " outline" : ""), ln, l.t);
+      return { ln, sp, outline: l.outline };
+    });
+    const widest = Math.max(...items.map(o => o.sp.offsetWidth)) / 100;
+    const maxW = a ? W * 0.6 - M * 1.4 : W - 2 * M;
+    const fs = Math.min(maxW / widest, (SH * 0.8) / (lines.length * 0.9), 340);
+    box.style.fontSize = fs + "px";
+    const bw = widest * fs, bh = lines.length * 0.9 * fs;
+    const left = a ? clamp(W * 0.17, M, W * 0.6 - bw) : (W - bw) / 2;
+    pos(box, { left, top: (SH - bh) / 2 + fs * 0.04 });
+
+    items.forEach((o, i) => {
+      if (o.outline) flickOn(o.sp, 380 + i * 150, 950);
+      else rise(o.sp, 120 + i * 120);
+    });
+    idleFlicker(inst, items.filter(o => o.outline).map(o => o.sp), 2600, 5200);
+    return true;
+  };
+
+  // Getränkekarte aus dem Tab Getränke
+  BUILD.karte = (s, inst, dur) => {
+    const wanted = (s.kategorien || "").split(",").map(x => x.trim()).filter(Boolean);
+    const all = data.drinks.filter(d => d.aktiv);
+    const cats = wanted.length ? wanted : [...new Set(all.map(d => d.kat))];
+    const groups = cats.map(c => ({ name: c, items: all.filter(d => d.kat.toLowerCase() === c.toLowerCase()) }))
+      .filter(g => g.items.length);
+    if (!groups.length) return false;
+
+    const el = inst.el;
+    const title = (s.z[0] || "").trim() || groups.map(g => g.name).join(" & ");
+
+    // riesiges umrandetes & im Hintergrund, driftet langsam
+    if (title.includes("&")) {
+      const g = mk("div", "ghost", el, "&");
+      g.style.fontSize = SH * 1.25 + "px";
+      pos(g, { right: -SH * 0.06, bottom: -SH * 0.12 });
+      g.animate([{ transform: "rotate(-5deg) translateY(2%)", opacity: 0 }, { transform: "rotate(2deg) translateY(0)", opacity: 0.16, offset: 0.15 },
+        { transform: "rotate(5deg) translateY(-2%)", opacity: 0.16 }], { duration: dur + 1500, easing: "ease-out", fill: "both" });
+    }
+
+    lockup(el);
+
+    // Überschrift
+    const hl = pos(mk("div", "k-head blk nocase ln", el), { left: M, top: 64 });
+    const hs = mk("span", null, hl);
+    ampText(hs, title);
+    const hfs = fit(hs, W - 2 * M - 380, 70, 175);
+    hl.style.fontSize = hfs + "px";
+    hs.style.fontSize = "";
+    const headBottom = 64 + hfs * 0.95;
+    rise(hs, 100);
+    hs.querySelectorAll(".amp").forEach(a => flickOn(a, 650, 1000));
+
+    // Aufteilen: große Kategorien als Spalten, kleine (bis 3 Getränke) in die pinke Zeile unten
+    const big = groups.filter(g => g.items.length > 3);
+    const main = big.length ? big : groups;
+    const foot = big.length ? groups.filter(g => g.items.length <= 3) : [];
+    let cols;
+    if (main.length === 1 && main[0].items.length > 7) {
+      const g = main[0], h = Math.ceil(g.items.length / 2);
+      cols = [[{ name: g.name, items: g.items.slice(0, h) }], [{ name: "", items: g.items.slice(h), cont: true }]];
+    } else if (main.length <= 3) {
+      cols = main.map(g => [g]);
+    } else {
+      // der Reihe nach auf drei Spalten verteilen, möglichst gleich hoch
+      const total = main.reduce((n, g) => n + g.items.length + 1.6, 0);
+      cols = [[], [], []];
+      let c = 0, load = 0;
+      main.forEach(g => {
+        const u = g.items.length + 1.6;
+        if (c < 2 && load > 0 && load + u / 2 > total / 3) { c++; load = 0; }
+        cols[c].push(g); load += u;
+      });
+      cols = cols.filter(x => x.length);
+    }
+
+    const units = col => col.reduce((n, g, i) => n + g.items.length * 1.32 + (g.name || g.cont ? 0.42 * 1.9 : 0) + (i ? 0.55 : 0), 0);
+    const maxUnits = Math.max(...cols.map(units));
+    const bottomPad = 70;
+    const footH = foot.length ? 1.9 : 0;
+    const top = headBottom + 44;
+    const availH = SH - top - bottomPad;
+    const gapX = cols.length > 2 ? 90 : 130;
+    const colW = (W - 2 * M - gapX * (cols.length - 1)) / cols.length;
+    let fs = clamp(availH / (maxUnits + footH), 30, 74);
+
+    const wrap = pos(mk("div", "k-cols", el), { left: M, top, width: W - 2 * M, gap: gapX + "px" });
+    const rows = [];
+    cols.forEach(col => {
+      const ce = mk("div", "k-col", wrap);
+      col.forEach((g, gi) => {
+        if (gi) mk("div", "k-gap", ce);
+        if (g.name) rows.push({ e: mk("div", "k-label", ce, g.name), label: true });
+        else if (g.cont) mk("div", "k-label", ce, " ");
+        g.items.forEach(d => {
+          const it = mk("div", "k-item" + (d.hot ? " hot" : "") + (d.out ? " out" : ""), ce);
+          mk("span", "k-name", it, d.name);
+          if (d.extra) mk("span", "k-extra", it, d.extra);
+          const dots = mk("span", "k-dots", it);
+          mk("span", "k-price", it, d.out ? "aus" : fmtPrice(d.preis));
+          rows.push({ e: it, dots });
+        });
+      });
+    });
+    wrap.style.fontSize = fs + "px";
+    // zu breit? Dann kleiner, bis die längste Zeile samt Preis in die Spalte passt
+    const need = el => [...el.children].reduce((w, c) => w + (c.classList.contains("k-dots") ? fs * 1.5 : c.offsetWidth), 0);
+    let widest = 0;
+    rows.filter(r => !r.label).forEach(r => { widest = Math.max(widest, need(r.e)); });
+    widest *= 1.04;
+    if (widest > colW) { fs = fs * colW / widest; wrap.style.fontSize = fs + "px"; }
+    // auf hohen Bildschirmen (3:2) bleibt unten Luft, dann die Spalten etwas nach unten ruecken
+    const spare = availH - (maxUnits + footH) * fs;
+    if (spare > 0) wrap.style.top = top + spare * 0.4 + "px";
+
+    // Einblenden: Spalte für Spalte, Zeile für Zeile
+    rows.forEach((r, i) => {
+      const d = 420 + i * 55;
+      fadeUp(r.e, d, 22, 600);
+      if (r.dots) anim(r.dots, [{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], { duration: 700, delay: d + 180, easing: EASE });
+    });
+
+    if (foot.length) {
+      const f = pos(mk("div", "k-foot", el), { left: M, top: SH - bottomPad - fs * 1.35 });
+      f.style.fontSize = fs + "px";
+      foot.forEach(g => {
+        mk("span", "k-label", f, g.name);
+        g.items.forEach(d => {
+          const it = mk("span", "k-fi" + (d.out ? " out" : ""), f, d.name);
+          mk("span", "k-fp", it, d.out ? "aus" : fmtPrice(d.preis));
+        });
+      });
+      if (f.offsetWidth > W - 2 * M) f.style.fontSize = fs * (W - 2 * M) / f.offsetWidth + "px";
+      anim(f, [{ opacity: 0, transform: "translateX(-60px)" }, { opacity: 1, transform: "translateX(0)" }],
+        { duration: 800, delay: 420 + rows.length * 55 + 150, easing: EASE });
+    }
+    idleFlicker(inst, [...hs.querySelectorAll(".amp")], 3000, 6000);
+    return true;
+  };
+
+  // Highlights nacheinander groß, dann als Liste
+  BUILD.special = (s, inst, dur) => {
+    const items = data.drinks.filter(d => d.aktiv && d.hot && !d.out);
+    if (!items.length) return false;
+    const el = inst.el;
+    const a = asset(s.bild);
+    if (a) mediaBox(inst, a, { left: W * 0.58, top: 0, width: W * 0.42, height: SH, fade: true }, dur);
+    const areaW = a ? W * 0.58 - M * 1.3 : W - 2 * M;
+
+    const head = pos(mk("div", "blk outline ln abs", el), { left: M, top: 72 });
+    const hs = mk("span", null, head, (s.z[0] || "Special Drinks").trim());
+    fit(hs, Math.min(areaW, 1100), 50, 120);
+    head.style.fontSize = hs.style.fontSize; hs.style.fontSize = "";
+    flickOn(hs, 200, 1000);
+    if (!a) lockup(el);
+
+    const listT = 1100 + items.length * 2600;
+    const withList = items.length > 1 && dur - listT > 2500;
+    const per = withList ? 2600 : Math.max(2200, (dur - 1300) / items.length);
+
+    items.forEach((d, i) => {
+      const words = d.name.trim().split(/\s+/);
+      const cut = words.length > 1 ? Math.ceil(words.length / 2) : 1;
+      const box = pos(mk("div", "abs", el), { left: M });
+      const l1 = mk("div", "ln blk", box); const s1 = mk("span", null, l1, words.slice(0, cut).join(" "));
+      let s2 = null;
+      if (words.length > 1) { const l2 = mk("div", "ln blk", box); s2 = mk("span", null, l2, words.slice(cut).join(" ")); }
+      const probe = s2 && s2.textContent.length > s1.textContent.length ? s2 : s1;
+      const fs = fit(probe, areaW, 80, Math.min(260, SH * 0.26));
+      box.style.fontSize = fs + "px"; probe.style.fontSize = "";
+      box.style.color = PALETTE[i % PALETTE.length];
+      const pr = mk("div", "blk", box, fmtPrice(d.preis));
+      pr.style.cssText = `font-size:0.34em;color:${PINK};margin-top:0.35em;letter-spacing:0`;
+      box.style.top = (SH - box.offsetHeight) / 2 + 40 + "px";
+      const t0 = 900 + i * per;
+      box.style.visibility = "hidden";
+      inst.later(() => {
+        box.style.visibility = "";
+        rise(s1, 0); if (s2) rise(s2, 110);
+        flickOn(pr, 500, 800);
+      }, t0);
+      inst.later(() => {
+        anim(box, FLICK_OFF, { duration: 500, fill: "forwards" });
+      }, t0 + per - 500);
+    });
+
+    if (withList) {
+      const list = pos(mk("div", "abs", el), { left: M });
+      const rows = items.map((d, i) => {
+        const r = mk("div", "k-item", list);
+        const n = mk("span", "k-name blk", r, d.name); n.style.color = PALETTE[i % PALETTE.length];
+        mk("span", "k-dots", r);
+        mk("span", "k-price", r, fmtPrice(d.preis));
+        return r;
+      });
+      list.style.width = areaW + "px";
+      list.style.fontSize = clamp((SH - 380) / (items.length * 1.32), 40, 96) + "px";
+      list.style.top = (SH - list.offsetHeight) / 2 + 50 + "px";
+      list.style.visibility = "hidden";
+      inst.later(() => {
+        list.style.visibility = "";
+        rows.forEach((r, i) => fadeUp(r, i * 140, 30, 700));
+      }, listT);
+    }
+    return true;
+  };
+
+  // Das Queerbar-Motion-Design als eigene Slide
+  BUILD.motion = (s, inst, dur, ghost) => {
+    const el = inst.el;
+    const words = data.songs.length ? data.songs : FALLBACK_WORDS;
+    const LH = 0.8, LOGO = 1.8;
+    const fs = Math.max(40, Math.min(SH / (9 * LH), W * 0.13));
+    el.style.setProperty("--fs", fs + "px");
+    const stack = mk("div", ghost ? "mstack ghostrows" : "mstack", el);
+    const info = ghost ? "" : (s.z[0] || "").trim();
+    const bandH = ghost ? 0 : fs * LOGO * 0.86 * 2 + fs * 0.3 + (info ? fs * 0.7 : 0);
+    const n = Math.max(2, Math.ceil((SH - bandH) / (fs * LH)) + 1);
+    const above = Math.floor(n / 2);
+    const rand = rng(1969 + Math.floor(Math.random() * 1000));
+    const pool = shuffled(words, rand);
+    const rows = [];
+    let logo = null;
+    for (let i = 0; i < n; i++) {
+      if (!ghost && i === above) {
+        const band = mk("div", "mband", stack);
+        band.style.height = bandH + "px";
+        logo = mk("h1", "mlogo", band);
+        logo.style.fontSize = fs * LOGO + "px";
+        mk("span", null, logo, "Queer");
+        mk("span", null, logo, "Bar");
+        if (logo.offsetWidth > W * 0.9) logo.style.fontSize = fs * LOGO * W * 0.9 / logo.offsetWidth + "px";
+        if (info) {
+          const inf = mk("div", "minfo", band, info);
+          inf.style.fontSize = fs * 0.42 + "px";
+          flickOn(inf, 1500, 900);
+        }
+      }
+      rows.push(makeRow(stack, i, pool, rand, fs));
+    }
+    if (ghost) return true;
+
+    anim(logo, [{ opacity: 0, transform: "scale(1.04)" }, { opacity: 1, transform: "scale(1)" }],
+      { duration: 1600, delay: 100, easing: "cubic-bezier(.2,.7,.2,1)" });
+    const mid = rows.length / 2;
+    rows.map((r, i) => ({ r, d: Math.abs(i + 0.5 - mid) + Math.random() * 0.8 }))
+      .sort((x, y) => x.d - y.d)
+      .forEach(({ r }, k) => flickOn(r, 500 + k * 110, 900));
+
+    const visibleWord = () => {
+      const all = stack.querySelectorAll(".word");
+      for (let t = 0; t < 20; t++) {
+        const e = all[Math.floor(Math.random() * all.length)];
+        const b = e.getBoundingClientRect();
+        if (b.left > 0 && b.right < innerWidth && b.width > 0) return e;
+      }
+      return null;
+    };
+    const tick = () => {
+      const roll = Math.random();
+      if (roll < 0.55) {
+        const e = visibleWord();
+        if (e) {
+          anim(e, FLICK, { duration: 500 + Math.random() * 500, fill: "none" });
+          if (Math.random() < 0.35) inst.later(() => { e.classList.toggle("c-pink"); e.classList.toggle("c-white"); }, 250);
+        }
+      } else if (roll < 0.72) {
+        [visibleWord(), visibleWord()].forEach(e => e && anim(e, FLICK, { duration: 600, fill: "none" }));
+      } else if (roll < 0.86) {
+        const r = rows[Math.floor(Math.random() * rows.length)];
+        anim(r, [{ opacity: 1 }, { opacity: 0.12, offset: 0.18 }, { opacity: 0.12, offset: 0.4 }, { opacity: 1 }],
+          { duration: 3200, easing: "ease-in-out", fill: "none" });
+      } else {
+        anim(logo, FLICK_SOFT, { duration: 900 + Math.random() * 500, fill: "none" });
+      }
+      inst.later(tick, 700 + Math.random() * 1800);
+    };
+    inst.later(tick, 2200);
+    return true;
+  };
+
+  // Acts: Foto mit Namen
+  BUILD.acts = (s, inst, dur) => {
+    const el = inst.el;
+    const a = asset(s.bild);
+    const names = s.z.slice(0, 3).map(t => (t || "").trim()).filter(Boolean);
+    const info = (s.z[3] || "").trim();
+    if (!names.length && !a) return false;
+    if (a) mediaBox(inst, a, { left: W * 0.36, top: 0, width: W * 0.64, height: SH, fade: true }, dur);
+    lockup(el);
+    const box = mk("div", "a-names", el);
+    const spans = names.map((t, i) => {
+      const ln = mk("div", "ln blk", box);
+      const sp = mk("span", i % 2 ? "pink" : null, ln, t);
+      return sp;
+    });
+    box.style.fontSize = "100px";
+    const widest = Math.max(1, ...spans.map(sp => sp.offsetWidth)) / 100;
+    const fs = Math.min((a ? W * 0.62 : W - 2 * M) / widest, 190, (SH * 0.5) / Math.max(1, names.length));
+    box.style.fontSize = fs + "px";
+    let inf = null;
+    if (info) {
+      inf = mk("div", "a-info", box, info);
+      inf.style.fontSize = Math.max(28, fs * 0.24) + "px";
+      inf.style.marginTop = fs * 0.28 + "px";
+    }
+    pos(box, { left: M, top: SH - 90 - box.offsetHeight });
+    spans.forEach((sp, i) => rise(sp, 700 + i * 160, 900));
+    if (inf) flickOn(inf, 1300 + names.length * 160, 900);
+    idleFlicker(inst, [el.querySelector(".lockup")], 3500, 7000);
+    return true;
+  };
+
+  // Info: Überschrift plus bis zu drei Zeilen Text
+  BUILD.info = (s, inst, dur) => {
+    const el = inst.el;
+    const head = (s.z[0] || "").trim();
+    const lines = s.z.slice(1).map(t => (t || "").trim()).filter(Boolean);
+    if (!head && !lines.length) return false;
+    BUILD.motion(s, inst, dur, true);
+    lockup(el);
+    const box = pos(mk("div", "abs", el), { left: M });
+    let hs = null;
+    if (head) {
+      const hl = mk("div", "ln blk outline", box);
+      hs = mk("span", null, hl, head);
+      const f = fit(hs, W - 2 * M, 80, 260);
+      hl.style.fontSize = f + "px"; hs.style.fontSize = "";
+    }
+    const tx = lines.map(t => mk("div", "i-text", box, t));
+    tx.forEach(t => { t.style.fontSize = "100px"; });
+    const tw = Math.max(1, ...tx.map(t => { t.style.display = "inline-block"; const w = t.offsetWidth; t.style.display = ""; return w; }));
+    const tfs = clamp(100 * (W - 2 * M) / tw, 40, 92);
+    tx.forEach((t, i) => { t.style.fontSize = tfs + "px"; if (!i) t.style.marginTop = tfs * 0.5 + "px"; });
+    box.style.top = (SH - box.offsetHeight) / 2 + "px";
+    if (hs) flickOn(hs, 200, 1000);
+    tx.forEach((t, i) => fadeUp(t, 700 + i * 180, 30, 700));
+    idleFlicker(inst, [hs], 3000, 6000);
+    return true;
+  };
+
+  // Nur ein Bild, zum Beispiel ein Sharepic
+  BUILD.bild = (s, inst, dur) => {
+    const a = asset(s.bild);
+    if (!a) return false;
+    const el = inst.el;
+    const bg = mk("div", "b-bg", el);
+    bg.style.backgroundImage = `url("${a.src.replace(/"/g, "%22")}")`;
+    const img = new Image();
+    img.className = "b-fg";
+    img.alt = "";
+    img.src = a.src;
+    el.appendChild(img);
+    inst.ready = preload(a.src).catch(() => { throw new Error("Bild lädt nicht: " + a.src); });
+    anim(img, [{ opacity: 0, transform: "scale(1.04)" }, { opacity: 1, transform: "scale(1)" }],
+      { duration: 1400, delay: 100, easing: EASE });
+    return true;
+  };
+
+  // ---------- Laufband und vielbunt-Logo ----------
+
+  let bandKey = "";
+  function buildBand() {
+    const st = data.settings;
+    const on = st.band !== "aus";
+    bandEl.style.display = on ? "" : "none";
+    bandEl.style.top = SH + "px";
+    vbEl.className = !st.vielbunt ? "off" : (on ? "" : "solo");
+    if (!vbEl.firstChild) vbEl.appendChild(document.getElementById("vb-logo-tpl").content.firstElementChild.cloneNode(true));
+    const key = [st.band, st.bandText, data.songs.join("|"), H].join("#");
+    if (key === bandKey) return;
+    bandKey = key;
+    bandEl.innerHTML = "";
+    if (!on) return;
+    const tk = mk("div", "btrack", bandEl);
+    const seq = [];
+    let k = 0;
+    if (st.band === "text") {
+      const msgs = (st.bandText || "Queer Bar").split("|").map(x => x.trim()).filter(Boolean);
+      while (tk.scrollWidth < W * 1.3 && k < 80) {
+        seq.push(mk("span", null, tk, msgs[k % msgs.length]));
+        seq.push(mk("span", "dot", tk, "●"));
+        k++;
+      }
+    } else {
+      const pool = shuffled(data.songs, rng(2019));
+      while (tk.scrollWidth < W * 1.3 && k < 200) {
+        seq.push(mk("span", k % 2 ? "c-pink" : "c-white", tk, pool[k % pool.length]));
+        k++;
+      }
+      if (seq.length % 2) seq.push(mk("span", "c-pink", tk, pool[k % pool.length]));
+    }
+    seq.forEach(e => tk.appendChild(e.cloneNode(true)));
+    tk.style.setProperty("--dur", (tk.scrollWidth / 2 / 85).toFixed(1) + "s");
+  }
+
+  // ---------- Übergänge ----------
+
+  function stripes() {
+    wipeEl.innerHTML = "";
+    const N = 8, h = SH / N;
+    const pool = shuffled(data.songs, rng(Math.floor(Math.random() * 9999)));
+    const rows = [];
+    for (let i = 0; i < N; i++) {
+      const even = i % 2 === 0;
+      const r = pos(mk("div", "wrow", wipeEl), { top: i * h, height: Math.ceil(h) + 1 });
+      r.style.background = even ? PINK : "#000";
+      const tk = mk("div", "wtrack", r);
+      tk.style.fontSize = h * 0.8 + "px";
+      tk.style.lineHeight = h + "px";
+      tk.style.color = even ? "#000" : PINK;
+      for (let k = 0; k < 12; k++) mk("span", "word", tk, pool[(i * 5 + k) % pool.length]);
+      rows.push({ r, tk, even });
+    }
+    return rows;
+  }
+
+  async function wipe(swap, T) {
+    const rows = stripes();
+    wipeEl.style.display = "block";
+    const d = Math.max(380, T * 0.42);
+    const off = W + 80;
+    const ez = "cubic-bezier(.75,0,.25,1)";
+    rows.forEach((o, i) => o.tk.animate(
+      [{ transform: `translateX(${o.even ? 0 : -700}px)` }, { transform: `translateX(${o.even ? -700 : 0}px)` }],
+      { duration: d * 2 + 900, easing: "linear", fill: "both" }));
+    await Promise.all(rows.map((o, i) => o.r.animate(
+      [{ transform: `translateX(${(o.even ? -1 : 1) * off}px)` }, { transform: "translateX(0)" }],
+      { duration: d, delay: i * 30, easing: ez, fill: "both" }).finished));
+    swap();
+    await wait(120);
+    await Promise.all(rows.map((o, i) => o.r.animate(
+      [{ transform: "translateX(0)" }, { transform: `translateX(${(o.even ? 1 : -1) * off}px)` }],
+      { duration: d, delay: i * 30, easing: ez, fill: "both" }).finished));
+    wipeEl.style.display = "none";
+    wipeEl.innerHTML = "";
+  }
+
+  // ---------- Ablauf ----------
+
+  let list = [];
+  let idx = -1;
+  let cur = null;
+  let nextTimer = null;
+  let paused = false;
+  let busy = false;
+  const startedAt = Date.now();
+
+  function durOf(s) {
+    const forced = parseNum(params.get("dauer"));
+    return (forced || s.dauer || data.settings.dauer || 10) * 1000;
+  }
+
+  function build(s) {
+    const el = mk("div", "slide", slidesEl);
+    el.style.visibility = "hidden";
+    const inst = instance(el);
+    const dur = durOf(s);
+    let ok = false;
+    try {
+      ok = BUILD[s.typ](s, inst, dur);
+    } catch (e) {
+      console.error("Slide kaputt:", s, e);
+    }
+    if (!ok) { el.remove(); return null; }
+    inst.dur = dur;
+    return inst;
+  }
+
+  // Animationen erst loslaufen lassen, wenn die Slide wirklich sichtbar wird
+  function hold(inst, on) {
+    inst.el.getAnimations({ subtree: true }).forEach(a => on ? a.pause() : a.play());
+  }
+
+  async function show(step, instant) {
+    if (busy) return;
+    busy = true;
+    clearTimeout(nextTimer);
+    try {
+      // neuer Stand aus dem Sheet? Dann jetzt übernehmen
+      if (pending) {
+        data = pending;
+        pending = null;
+        layout();
+      }
+      // alle paar Stunden neu laden, damit auch eine neue Version der Seite ankommt
+      if (Date.now() - startedAt > 6 * 3600 * 1000 && navigator.onLine && step > 0) {
+        location.reload();
+        return;
+      }
+      list = playlist();
+      const dir = step < 0 ? -1 : 1;
+      let inst = null, s = null, i = idx;
+      // leere Slides (z. B. Karte ohne aktive Getränke) oder kaputte Bilder werden übersprungen
+      for (let t = 0; t < list.length && !inst; t++) {
+        i = ((i + dir) % list.length + list.length) % list.length;
+        s = list[i];
+        inst = build(s);
+        if (!inst) continue;
+        hold(inst, true);
+        try { await inst.ready; }
+        catch (e) { console.warn(e.message); inst.stop(); inst.el.remove(); inst = null; }
+      }
+      if (!inst) {
+        s = { typ: "motion", z: ["", "", "", ""], trans: "blende" };
+        inst = build(s);
+        hold(inst, true);
+      }
+      idx = i;
+
+      const old = cur;
+      cur = inst;
+      const T = data.settings.trans * 1000;
+      const kind = instant || !old ? "cut" : s.trans;
+
+      const reveal = () => {
+        inst.el.style.visibility = "";
+        hold(inst, false);
+        inst.go();
+      };
+      if (kind === "cut") {
+        reveal();
+        if (old) { old.stop(); old.el.remove(); }
+        if (!old) anim(inst.el, [{ opacity: 0 }, { opacity: 1 }], { duration: 900, easing: "ease-out" });
+      } else if (kind === "streifen") {
+        await wipe(() => { if (old) { old.stop(); old.el.remove(); } reveal(); }, T);
+      } else if (kind === "flackern") {
+        await anim(old.el, FLICK_OFF, { duration: 520, fill: "forwards" }).finished;
+        old.stop(); old.el.remove();
+        reveal();
+        anim(inst.el, FLICK_ON, { duration: 800 });
+      } else {
+        reveal();
+        inst.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: T, easing: "ease-in-out", fill: "backwards" });
+        await old.el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: T, easing: "ease-in-out", fill: "forwards" }).finished;
+        old.stop(); old.el.remove();
+      }
+      // Reste von abgebrochenen Wechseln wegräumen
+      [...slidesEl.children].forEach(c => { if (c !== inst.el) c.remove(); });
+      schedule(inst.dur);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function schedule(ms) {
+    clearTimeout(nextTimer);
+    if (!paused) nextTimer = setTimeout(() => show(1), ms);
+  }
+
+  // ---------- Bildschirmgröße ----------
+
+  function layout() {
+    const iw = window.innerWidth, ih = window.innerHeight;
+    scale = iw / W;
+    H = Math.max(400, Math.round(ih / scale));
+    const bandOn = data && data.settings.band !== "aus";
+    SH = H - (bandOn ? BAND_H : 0);
+    stage.style.height = H + "px";
+    stage.style.transform = `scale(${scale})`;
+    slidesEl.style.height = SH + "px";
+    wipeEl.style.height = SH + "px";
+    if (data) buildBand();
+  }
+
+  let resizeTimer, lastSize = "";
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const sz = innerWidth + "x" + innerHeight;
+      if (sz === lastSize) return;
+      lastSize = sz;
+      layout();
+      if (cur) { idx--; show(1, true); }
+    }, 250);
+  }
+  window.addEventListener("resize", onResize);
+
+  // ---------- Steuerung ----------
+
+  let toastTimer;
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1800);
+  }
+
+  function toggleFullscreen() {
+    const d = document, r = document.documentElement;
+    if (!d.fullscreenElement && !d.webkitFullscreenElement) (r.requestFullscreen || r.webkitRequestFullscreen)?.call(r);
+    else (d.exitFullscreen || d.webkitExitFullscreen)?.call(d);
+  }
+  document.addEventListener("dblclick", toggleFullscreen);
+
+  let hinted = false;
+  function hint() {
+    if (hinted) return;
+    hinted = true;
+    toast("← → blättern · Leertaste Pause · F Vollbild · R neu laden");
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "f" || e.key === "F") { toggleFullscreen(); return; }
+    if (e.key === "r" || e.key === "R") { refresh(true); return; }
+    if (e.key === " ") {
+      e.preventDefault();
+      hint();
+      paused = !paused;
+      toast(paused ? "Pause" : "läuft weiter");
+      if (paused) clearTimeout(nextTimer); else schedule(1500);
+      return;
+    }
+    if (e.key === "ArrowRight") { hint(); show(1); return; }
+    if (e.key === "ArrowLeft") { hint(); show(-1); }
+  });
+
+  let cursorTimer;
+  document.addEventListener("mousemove", () => {
+    document.body.classList.remove("hide-cursor");
+    clearTimeout(cursorTimer);
+    cursorTimer = setTimeout(() => document.body.classList.add("hide-cursor"), 2000);
+  });
+  document.body.classList.add("hide-cursor");
+
+  // Bildschirm soll nicht in den Ruhezustand gehen (klappt nur über https)
+  let wakeLock = null;
+  async function keepAwake() {
+    try {
+      if ("wakeLock" in navigator && document.visibilityState === "visible") wakeLock = await navigator.wakeLock.request("screen");
+    } catch (e) { /* nicht schlimm */ }
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
+
+  // Zum Testen im Browser
+  window.__qb = { show, refresh, get data() { return data; }, get list() { return list; }, pause: () => { paused = true; clearTimeout(nextTimer); } };
+
+  // ---------- Start ----------
+
+  async function start() {
+    const fonts = Promise.all([
+      document.fonts.load('800 100px "Cera Pro"', "QUEER"),
+      document.fonts.load('900 100px "Cera Pro"', "QUEER")
+    ]).catch(() => {});
+    await Promise.race([fonts, wait(3000)]);
+    data = cachedData();
+    // Beim Start kurz aufs Sheet warten, damit nicht erst der alte Stand aufblitzt
+    try { data = await Promise.race([loadSheet(), wait(4000).then(() => { throw new Error("zu langsam"); })]); }
+    catch (e) { console.warn("Start mit gespeichertem Stand:", e.message); }
+    layout();
+    lastSize = innerWidth + "x" + innerHeight;
+    const startAt = parseInt(params.get("start"), 10);
+    idx = (startAt > 0 ? startAt - 1 : 0) - 1;
+    keepAwake();
+    await show(1, true);
+    const every = data.settings.refresh * 1000;
+    refreshTimer = setTimeout(() => refresh(false), lastFetchOk ? every : 5000);
+  }
+  start();
+})();
+</script>
+</body>
+</html>
