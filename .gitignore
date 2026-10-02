@@ -27,3 +27,7 @@ node_modules/
 /vielbunt-motion/vielbunt-loop.html
 /queerbar-kiosk/dist/
 /queerbar-kiosk/assets/
+
+# lokale Secrets fuer wrangler dev
+worker/.dev.vars
+worker/.wrangler/

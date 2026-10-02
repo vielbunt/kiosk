@@ -181,8 +181,7 @@
             if (!e.start) continue;
             const cls = (e.cls || 'PUBLIC').toUpperCase();
             if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL') continue;
-            // interne Termine (Auf-/Abbau, intern, Blocker, Klausur, abgesagt ...) wie im grossen Kiosk weglassen
-            if (/\b(?:auf|ab)bau(?:en)?\b|\bintern(?:e[nrs]?)?\b|^\W*(?:blocker|vormerkung)\b|klausur|kassen(?:prüfung|übergabe|meeting)|\babrechnung\b|\binventur\b|abgesagt/i.test(e.summary || '')) continue;
+            // interne Termine (Auf-/Abbau, intern, Blocker, Klausur, abgesagt ...) filtert schon der Worker (worker/filter.js)
             if (!e.rrule) {
                 if (e.start >= day0 && e.start <= until && !(e.ex && e.ex.includes(e.start.getTime())))
                     out.push({ summary: e.summary, start: e.start });

@@ -5,11 +5,8 @@ const ICS_URL = 'https://shy-recipe-d443.me-02a.workers.dev/';
 const CACHE_KEY = 'vielbunt_loop_ics';
 const CACHE_TTL = 30 * 60 * 1000;
 
-// interne Treffen (AGs, Vorstand ...) werden wie im Kiosk blasser dargestellt
-const INTERNAL = /(^|[\s(])(UAG|AG|UAK|AK|AKÖ|JV|HA)(\b|$)|Vorstandssitzung|Jugendvorstand/;
-// Mitgliederversammlung, Renovierung, Runder Tisch: sichtbar, aber blass wie die AGs
-const INTERNAL_GRAU = /mitgliederversammlung|renovierung|runder tisch/i;
-export const isInternal = (s) => INTERNAL.test(s || '') || INTERNAL_GRAU.test(s || '');
+// Interne Termine filtert der Worker raus, Arbeitstreffen (AGs, Vorstand, Mitgliederversammlung ...)
+// markiert er mit X-VIELBUNT-INTERN, die werden wie im Kiosk blasser dargestellt. Regeln: worker/filter.js
 
 async function loadText() {
   try {
@@ -58,6 +55,7 @@ export function parseICS(text, now = new Date()) {
       else if (line.startsWith('RRULE:')) cur.rrule = v;
       else if (line.startsWith('EXDATE')) (cur.ex = cur.ex || []).push(...v.split(',').map((d) => parseDate(d).getTime()));
       else if (line.startsWith('CLASS:')) cur.cls = v.trim();
+      else if (line.startsWith('X-VIELBUNT-INTERN:')) cur.intern = true;
       else if (line.startsWith('UID:')) cur.uid = v.trim();
       else if (line.startsWith('RECURRENCE-ID')) cur.recId = parseDate(v);
       else if (line.startsWith('STATUS:')) cur.status = v.trim();
@@ -72,9 +70,8 @@ export function parseICS(text, now = new Date()) {
   for (const e of all) {
     if (!e.start || !e.summary) continue;
     const cls = (e.cls || 'PUBLIC').toUpperCase();
-    if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL' || e.status === 'CANCELLED' || /abgesagt/i.test(e.summary)) continue;
-    // interne Termine (Auf-/Abbau, intern, Blocker, Klausur ...) gehören nicht auf den Screen, wie im Kiosk
-    if (/\b(?:auf|ab)bau(?:en)?\b|\bintern(?:e[nrs]?)?\b|^\W*(?:blocker|vormerkung)\b|klausur|kassen(?:prüfung|übergabe|meeting)|\babrechnung\b|\binventur\b|abgesagt/i.test(e.summary)) continue;
+    if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL' || e.status === 'CANCELLED') continue;
+    // interne und abgesagte Termine (Auf-/Abbau, intern, Blocker, Klausur ...) filtert schon der Worker (worker/filter.js)
     if (e.rrule) {
       try {
         const s = e.start;
@@ -85,12 +82,12 @@ export function parseICS(text, now = new Date()) {
           const d = e.tz ? new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), n.getUTCHours(), n.getUTCMinutes()) : n;
           if (e.ex && e.ex.includes(d.getTime())) continue;
           if (moved[e.uid] && moved[e.uid].includes(d.getTime())) continue;
-          out.push({ summary: e.summary, location: e.location, start: d });
+          out.push({ summary: e.summary, location: e.location, intern: e.intern, start: d });
         }
       } catch (err) { /* kaputte Regel ueberspringen */ }
     } else if (e.start >= day0 && e.start <= until) {
       if (e.ex && e.ex.includes(e.start.getTime())) continue;
-      out.push({ summary: e.summary, location: e.location, start: e.start });
+      out.push({ summary: e.summary, location: e.location, intern: e.intern, start: e.start });
     }
   }
   return out.sort((a, b) => a.start - b.start);
@@ -107,7 +104,7 @@ export function formatEvent(e) {
     time: hasTime ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '',
     title: e.summary,
     place: e.location || '',
-    internal: isInternal(e.summary),
+    internal: !!e.intern,
   };
 }
 

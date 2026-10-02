@@ -1,0 +1,14 @@
+# Deploy: cd worker && npx wrangler deploy   (Konto me@janbamba.ch)
+name = "shy-recipe-d443"
+main = "worker.js"
+compatibility_date = "2026-07-12"
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true

@@ -456,9 +456,8 @@
     <script>
         const WP_API_URL = 'https://www.vielbunt.org/wp-json/wp/v2/posts';
         const ICS_URL = 'https://shy-recipe-d443.me-02a.workers.dev/';
-        // Termine, die nicht fürs Publikum sind und nirgends auftauchen: Auf- und Abbau (Queerbar, Truss ...),
-        // alles mit "intern", Blocker und Vormerkungen, Klausuren, Kassensachen, Inventur, abgesagte Termine
-        const AUSBLENDEN = /\b(?:auf|ab)bau(?:en)?\b|\bintern(?:e[nrs]?)?\b|^\W*(?:blocker|vormerkung)\b|klausur|kassen(?:prüfung|übergabe|meeting)|\babrechnung\b|\binventur\b|abgesagt/i;
+        // Interne Termine (Auf-/Abbau, intern, Blocker, Klausur, Kasse, abgesagt, privat ...) filtert schon der
+        // Worker raus, die Regeln stehen an einer Stelle in worker/filter.js
 
         let slidesData = [];
         let currentSlideIndex = 0;
@@ -700,6 +699,9 @@
                         currentEvent.exdates.push(parseICSDate(dateStr).getTime());
                     } else if (line.startsWith('CLASS:')) {
                         currentEvent.cls = line.substring(6).trim();
+                    } else if (line.startsWith('X-VIELBUNT-INTERN:')) {
+                        // setzt der Worker fuer AG-, AK- und Vorstandstreffen (Regeln in worker/filter.js)
+                        currentEvent.intern = true;
                     } else if (line.startsWith('UID:')) {
                         currentEvent.uid = line.substring(4).trim();
                     } else if (line.startsWith('RECURRENCE-ID')) {
@@ -737,9 +739,6 @@
                 // Skip private and confidential events (Sichtbarkeit = vertraulich)
                 const cls = (e.cls || 'PUBLIC').toUpperCase();
                 if (cls === 'PRIVATE' || cls === 'CONFIDENTIAL') return;
-
-                // interne Termine tauchen nirgends auf (Kiosk, Social Media, Plakat)
-                if (AUSBLENDEN.test(e.summary || '')) return;
 
                 // Skip non-recurring events that ended more than 30 days ago
                 if (!e.rrule && !e.recurrenceId && e.start < staleThreshold) return;
@@ -787,6 +786,7 @@
                             if (uidExceptions.includes(date.getTime())) return;
                             upcomingEvents.push({
                                 summary: e.summary,
+                                intern: e.intern,
                                 start: date,
                                 end: new Date(date.getTime() + duration)
                             });
@@ -883,14 +883,8 @@
             const list = document.createElement('div');
             list.className = 'sm-events';
 
-            const INTERNAL_KEYWORDS = [
-                'Vorstandssitzung', 'Jugendvorstand',
-                'UAG', 'AG', 'UAK', 'AK', 'JV', 'HA', 'AKÖ'
-            ];
-            // auch grau, obwohl ohne AG/AK im Namen: eher was für Mitglieder und Netzwerk als fürs Publikum
-            const INTERNAL_GRAU = /mitgliederversammlung|renovierung|runder tisch/i;
-            const isInternal = summary =>
-                INTERNAL_KEYWORDS.some(kw => summary.includes(kw)) || INTERNAL_GRAU.test(summary);
+            // Arbeitstreffen (AGs, AKs, Vorstand, Mitgliederversammlung ...) markiert der Worker, siehe worker/filter.js
+            const isInternal = e => !!e.intern;
 
             // Build the 7-day window starting from today (or from next Monday in poster mode)
             const _win0 = new Date();
@@ -903,7 +897,7 @@
                 const tiers = [
                     e => (e.summary || '').trimStart().startsWith('UAG'),
                     e => (e.summary || '').trimStart().startsWith('AG'),
-                    e => isInternal(e.summary || ''),
+                    isInternal,
                 ];
                 for (const inTier of tiers) {
                     if (weekEvents.length <= 10) break;
@@ -931,7 +925,7 @@
                     ? `${weekday} ${datePart} · ${formatTime(e.start)} Uhr`
                     : `${weekday} ${datePart}`;
                 const summary = e.summary || 'Termin';
-                const titleClass = isInternal(summary)
+                const titleClass = isInternal(e)
                     ? 'sm-event-title sm-event-title--internal'
                     : 'sm-event-title';
 
@@ -946,7 +940,7 @@
             wrapper.appendChild(list);
 
             // Legend (optional, only if at least one Arbeitstreffen is displayed)
-            const hasAnyInternal = displayEvents.some(e => isInternal(e.summary || ''));
+            const hasAnyInternal = displayEvents.some(isInternal);
             if (showLegend && hasAnyInternal) {
                 const legend = document.createElement('div');
                 legend.className = 'sm-legend';
