@@ -15,6 +15,7 @@ von selbst, ohne Neustart. **Standard ist `standard`.**
 | --- | --- | --- |
 | `standard` | `standard.html` | Offener Treff: Sharepics, Terminübersicht, vorgerenderte Clips. Optional die Getränkekarte mit Treffpreisen (Einstellung "Getränkekarte Standard", aus). Keine Verweise auf Alkohol, Queerbar-Beiträge bleiben draußen. |
 | `queerbar` | `queerbar.html` | Queerbar-Abend: Slides aus dem Tab "Queerbar Slides". Claim und Motion sind vorgerendert, Karte, Acts, Info und Bild stehen als ruhiges Bild. |
+| `7-jahre-queerbar` | `7-jahre-queerbar.html` | Sonderkiosk fürs Queerbar-Jubiläum: die ganze Queerbar-Show (alle aktiven Slides mit Animationen, Übergängen und Laufband) ist ein einziges vorgerendertes Video in Schleife. Nur Preise und Ausverkauft kommen live aus dem Sheet als Overlay. Der Modus `queerbar` bleibt daneben unverändert bestehen. |
 | `event` | `event.html` | "Herzlich willkommen zur Veranstaltung ...", Sharepics des Tages, Termine, ruhige Clips, optional Getränkekarte mit Eventpreisen. Ablauf im Tab "Event-Ablauf". |
 
 Tabs im Sheet: Einstellungen, Event, Event-Ablauf, Getränkekarte (Barraum) und Queerbar Slides / Getränke / Songs
@@ -104,6 +105,26 @@ Laufband). Ändert sich im Sheet etwas daran, passt der Schlüssel nicht mehr, u
 zum nächsten Rendern als stehendes Bild (Text und Foto, ohne Bewegung). Nach Änderungen an Claim/Motion also
 `./deploy.sh --rendern` ausführen. Aufgenommen wird der echte Queerbar-Kiosk in Chrome (Screencast),
 ffmpeg macht H.264 daraus. Ändert sich das Aussehen des Queerbar-Kiosks, `CLIP_VERSION` in `src/sheet.js` hochzählen.
+
+## 7-jahre-queerbar (Show-Video)
+
+```
+node render/show.mjs                    # Slides, wie sie heute im Sheet aktiv sind
+node render/show.mjs --tag=09.10.2026   # Slides, wie sie an diesem Barabend aktiv wären
+./deploy.sh --show                      # vorher neu rendern, dann hochladen (SHOW_TAG=09.10.2026 setzt den Tag)
+```
+
+Der echte Queerbar-Kiosk spielt in Chrome mit `show` und `noprice` durch, das Skript nimmt per Screencast zwei volle
+Durchläufe auf und schneidet einen heraus (Beginn des Übergangs in den ersten Slide bis zum nächsten Beginn), damit
+die Schleife nahtlos läuft. Rendern dauert rund 3 Minuten. Ergebnis in `clips-7jahre/` (nicht im Repo): `show.mp4`
+und `show.js` mit Zeitleiste und der gemessenen Lage der Preise.
+
+- Im Video stecken Texte, Fotos, Hervorhebungen (Highlight), Kategorien, Laufband, Übergänge. Ändert sich eins davon
+  im Sheet (Tab Queerbar Slides, Songs, Kategorien, neue Getränke), muss neu gerendert werden.
+- Live aus dem Tab Queerbar Getränke (jede Minute): Preis, Ausverkauft (Zeile abgedunkelt, durchgestrichen, "aus")
+  und Aktiv (Zeile wird abgedeckt). Typ Special wird nicht live gelegt (Preise sind dort im Video).
+- Kodiert wird als H.264 Baseline ohne B-Bilder (`-tune fastdecode`): der Pi dekodiert in Software, auf dem Pi
+  rund 2 % verworfene Bilder. Ein High-Profile-Video lief deutlich schlechter.
 
 ## Auf dem Pi
 

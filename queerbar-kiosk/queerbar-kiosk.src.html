@@ -416,6 +416,11 @@
   const SHEET_ID = params.get("sheet") || "152xB92pnSdWQGcb8QO9tB1J0yOjslCxOAsFX6Ap9d1k";
   const GID = { slides: 0, drinks: 1, songs: 2, settings: 3 };
   const CACHE_KEY = "qb-kiosk-daten";
+  // Vorrendern der Show (barraum/render/show.mjs): show = durchlaufen lassen und Ereignisse loggen,
+  // noprice = Preise und Ausverkauft weglassen (die kommen am Pi live als Overlay), tag = Barabend als TT.MM.JJJJ
+  const SHOW = params.has("show"), NOPRICE = params.has("noprice");
+  window.__qbLog = [];
+  const qlog = o => window.__qbLog.push(Object.assign({ t: Date.now() }, o));
 
   // Eingebaute Bilder. Name aus der Spalte Bild -> Datei. Beim Bauen landen die Bilder direkt in der HTML.
   const ASSETS = {
@@ -686,7 +691,7 @@
       const o = JSON.parse(params.get("slide"));
       return [Object.assign({ aktiv: true, typ: "motion", z: ["", "", "", ""], dauer: null, bild: "", kategorien: "", trans: "blende" }, o)];
     }
-    const day = barDay(new Date());
+    const day = params.get("tag") ? parseDate(params.get("tag")) : barDay(new Date());
     const nur = (params.get("nur") || "").toLowerCase();
     let list = data.slides.filter(s => s.aktiv
       && (!s.ab || s.ab <= day)
@@ -945,11 +950,13 @@
         if (g.name) rows.push({ e: mk("div", "k-label", ce, g.name), label: true });
         else if (g.cont) mk("div", "k-label", ce, " ");
         g.items.forEach(d => {
-          const it = mk("div", "k-item" + (d.hot ? " hot" : "") + (d.out ? " out" : ""), ce);
+          const it = mk("div", "k-item" + (d.hot ? " hot" : "") + (d.out && !NOPRICE ? " out" : ""), ce);
+          it.dataset.qbKey = (d.kat + "|" + d.name).toLowerCase();
           mk("span", "k-name", it, d.name);
           if (d.extra) mk("span", "k-extra", it, d.extra);
           const dots = mk("span", "k-dots", it);
-          mk("span", "k-price", it, d.out ? "aus" : fmtPrice(d.preis));
+          const pr = mk("span", "k-price", it, NOPRICE ? "00,00" : (d.out ? "aus" : fmtPrice(d.preis)));
+          if (NOPRICE) pr.style.visibility = "hidden";
           rows.push({ e: it, dots });
         });
       });
@@ -978,8 +985,10 @@
       foot.forEach(g => {
         mk("span", "k-label", f, g.name);
         g.items.forEach(d => {
-          const it = mk("span", "k-fi" + (d.out ? " out" : ""), f, d.name);
-          mk("span", "k-fp", it, d.out ? "aus" : fmtPrice(d.preis));
+          const it = mk("span", "k-fi" + (d.out && !NOPRICE ? " out" : ""), f, d.name);
+          it.dataset.qbKey = (d.kat + "|" + d.name).toLowerCase();
+          const fp = mk("span", "k-fp", it, NOPRICE ? "00,00" : (d.out ? "aus" : fmtPrice(d.preis)));
+          if (NOPRICE) fp.style.visibility = "hidden";
         });
       });
       if (f.offsetWidth > W - 2 * M) f.style.fontSize = fs * (W - 2 * M) / f.offsetWidth + "px";
@@ -1298,6 +1307,22 @@
   let busy = false;
   const startedAt = Date.now();
 
+  // Lage der Preise (Bildschirmpixel), fuer das Overlay am Pi
+  function collectGeom(root) {
+    const r = e => { const b = e.getBoundingClientRect(); return { x: +b.left.toFixed(1), y: +b.top.toFixed(1), w: +b.width.toFixed(1), h: +b.height.toFixed(1) }; };
+    return [...root.querySelectorAll("[data-qb-key]")].map(it => {
+      const foot = it.classList.contains("k-fi");
+      const pe = it.querySelector(foot ? ".k-fp" : ".k-price");
+      const ne = foot ? it : it.querySelector(".k-name");
+      const cs = getComputedStyle(pe);
+      return {
+        key: it.dataset.qbKey, foot, hot: it.classList.contains("hot"),
+        price: r(pe), row: r(it), name: foot ? Object.assign(r(it), { w: r(pe).x - r(it).x }) : r(ne),
+        fs: +(parseFloat(cs.fontSize) * scale).toFixed(2), color: cs.color
+      };
+    });
+  }
+
   function durOf(s) {
     const forced = parseNum(params.get("dauer"));
     return (forced || s.dauer || data.settings.dauer || 10) * 1000;
@@ -1328,6 +1353,7 @@
     if (busy) return;
     busy = true;
     clearTimeout(nextTimer);
+    qlog({ ev: "next" });
     try {
       // neuer Stand aus dem Sheet? Dann jetzt übernehmen
       if (pending) {
@@ -1366,12 +1392,13 @@
       const kind = instant || !old ? "cut" : s.trans;
 
       const reveal = () => {
+        qlog({ ev: "reveal", i: idx, n: list.length, typ: s.typ });
         inst.el.style.visibility = "";
         hold(inst, false);
         inst.go();
       };
       // Vorrendern: erst loslassen, wenn die Aufnahme laeuft
-      if (params.has("render")) {
+      if (params.has("render") && !SHOW) {
         window.__qbReady = true;
         await new Promise(r => { window.__qbRelease = r; });
       }
@@ -1394,6 +1421,12 @@
       }
       // Reste von abgebrochenen Wechseln wegräumen
       [...slidesEl.children].forEach(c => { if (c !== inst.el) c.remove(); });
+      qlog({ ev: "shown", i: idx, typ: s.typ });
+      if (SHOW && s.typ === "karte") {
+        // Lage der Preise erst messen, wenn alle Zeilen eingeblendet sind
+        const mine = inst, myIdx = idx;
+        setTimeout(() => qlog({ ev: "geom", i: myIdx, geom: collectGeom(mine.el) }), Math.min(mine.dur * 0.7, 3600));
+      }
       schedule(inst.dur);
     } finally {
       busy = false;

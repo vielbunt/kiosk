@@ -35,3 +35,4 @@ worker/.wrangler/
 # Barraum-Kiosk: gebaute Seiten, Queerbar-Clips (Fotos von Menschen, Cera-Schrift im Bild)
 /barraum/dist/
 /barraum/clips-queerbar/
+/barraum/clips-7jahre/

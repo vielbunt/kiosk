@@ -40,7 +40,7 @@ rmSync(DIST, { recursive: true, force: true });
 mkdirSync(join(DIST, 'clips'), { recursive: true });
 
 let total = 0;
-for (const page of ['start', 'standard', 'queerbar', 'event']) {
+for (const page of ['start', 'standard', 'queerbar', 'event', '7-jahre-queerbar']) {
     let html = read(page + '.html');
     // erst die eigenen Skripte, dann die Bausteine (die sind schon minifiziert)
     html = minifyPage(html);

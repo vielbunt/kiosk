@@ -357,7 +357,7 @@
     };
 
     // Tabs, die nur gelegentlich schwanken (Karte, Event, Ablauf): alle fuenf Minuten still neu
-    BK.sheetLoop = function (names, fn) {
+    BK.sheetLoop = function (names, fn, ms) {
         let last = '';
         async function load() {
             try {
@@ -367,7 +367,7 @@
             } catch (e) { console.warn('Sheet:', e.message); }
         }
         load();
-        setInterval(load, SHEET_MS);
+        setInterval(load, ms || SHEET_MS);
         return load;
     };
 

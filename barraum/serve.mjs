@@ -12,6 +12,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 
 function resolvePath(p) {
     if (p.startsWith('/clips/vielbunt/')) return join(HERE, 'clips', p.slice(16));
+    if (p.startsWith('/clips/7jahre/')) return join(HERE, 'clips-7jahre', p.slice(14));
     if (p.startsWith('/clips/queerbar/')) return join(HERE, 'clips-queerbar', p.slice(16));
     return join(HERE, 'dist', p === '/' ? 'start.html' : p);
 }

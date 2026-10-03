@@ -9,7 +9,7 @@
     const GID = { einstellungen: 3, event: 5, ablauf: 6, karte: 7, qslides: 0, qdrinks: 1, qsongs: 2 };
     // Worker mit CORS, siehe worker/worker.js (Googles Export geht von file:// aus nicht)
     const PROXY = 'https://shy-recipe-d443.me-02a.workers.dev/sheet/';
-    const MODES = ['standard', 'queerbar', 'event'];
+    const MODES = ['standard', 'queerbar', 'event', '7-jahre-queerbar'];
 
     function parseCSV(text) {
         const rows = [];
