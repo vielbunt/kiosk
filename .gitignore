@@ -31,3 +31,7 @@ node_modules/
 # lokale Secrets fuer wrangler dev
 worker/.dev.vars
 worker/.wrangler/
+
+# Barraum-Kiosk: gebaute Seiten, Queerbar-Clips (Fotos von Menschen, Cera-Schrift im Bild)
+/barraum/dist/
+/barraum/clips-queerbar/

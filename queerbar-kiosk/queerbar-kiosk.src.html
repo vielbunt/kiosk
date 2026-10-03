@@ -681,6 +681,11 @@
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
   function playlist() {
+    // Zum Vorrendern (barraum/render/queerbar-clips.mjs): genau ein Slide aus dem Parameter slide, als JSON
+    if (params.get("slide")) {
+      const o = JSON.parse(params.get("slide"));
+      return [Object.assign({ aktiv: true, typ: "motion", z: ["", "", "", ""], dauer: null, bild: "", kategorien: "", trans: "blende" }, o)];
+    }
     const day = barDay(new Date());
     const nur = (params.get("nur") || "").toLowerCase();
     let list = data.slides.filter(s => s.aktiv
@@ -793,6 +798,7 @@
   }
 
   function idleFlicker(inst, els, lo, hi) {
+    if (params.has("render")) return;   // Standbilder fürs Barraum-Kiosk sollen nie mitten im Flackern entstehen
     const list = els.filter(Boolean);
     if (!list.length) return;
     const tick = () => {
@@ -1208,7 +1214,7 @@
   let bandKey = "";
   function buildBand() {
     const st = data.settings;
-    const on = st.band !== "aus";
+    const on = st.band !== "aus" && !params.has("noband");
     bandEl.style.display = on ? "" : "none";
     bandEl.style.top = SH + "px";
     vbEl.className = !st.vielbunt ? "off" : (on ? "" : "solo");
@@ -1364,6 +1370,11 @@
         hold(inst, false);
         inst.go();
       };
+      // Vorrendern: erst loslassen, wenn die Aufnahme laeuft
+      if (params.has("render")) {
+        window.__qbReady = true;
+        await new Promise(r => { window.__qbRelease = r; });
+      }
       if (kind === "cut") {
         reveal();
         if (old) { old.stop(); old.el.remove(); }
@@ -1400,7 +1411,7 @@
     const iw = window.innerWidth, ih = window.innerHeight;
     scale = iw / W;
     H = Math.max(400, Math.round(ih / scale));
-    const bandOn = data && data.settings.band !== "aus";
+    const bandOn = data && data.settings.band !== "aus" && !params.has("noband");
     SH = H - (bandOn ? BAND_H : 0);
     stage.style.height = H + "px";
     stage.style.transform = `scale(${scale})`;

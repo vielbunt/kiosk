@@ -1,0 +1,57 @@
+#!/bin/bash
+# Barraum-Kiosk bauen und auf den Pi im Barraum bringen.
+#
+#   barraum/deploy.sh                 bauen, Seiten + Clips hochladen, Browser neu starten
+#   barraum/deploy.sh --rendern       vorher fehlende Queerbar-Clips aus dem Sheet rendern
+#   barraum/deploy.sh --ohne-clips    nur die Seiten (schnell, ein paar KB)
+#   barraum/deploy.sh --ohne-neustart Browser nicht neu starten
+#
+# Der Pi laedt im Betrieb alles selbst nach (Sheet, Posts, Termine). Neu hochladen muss man nur, wenn sich
+# der Code oder die vorgerenderten Clips aendern. Den Modus (standard / queerbar / event) stellt man im Sheet um.
+# Ziel: PI_HOST (Standard kiosk-admin@192.168.10.60), im Ordner ~/barraum auf dem Pi.
+
+set -euo pipefail
+cd "$(dirname "$0")"
+
+PI_HOST="${PI_HOST:-kiosk-admin@192.168.10.60}"
+ZIEL="barraum"
+clips=1; neustart=1; rendern=0
+for a in "$@"; do
+    case "$a" in
+        --ohne-clips) clips=0 ;;
+        --ohne-neustart) neustart=0 ;;
+        --rendern) rendern=1 ;;
+        *) sed -n '2,11p' "$0"; exit 1 ;;
+    esac
+done
+
+ssh -o ConnectTimeout=8 "$PI_HOST" true || { echo "Pi nicht erreichbar ($PI_HOST). Im Netz des queeren Zentrums?" >&2; exit 1; }
+
+[ $rendern = 1 ] && node render/queerbar-clips.mjs
+[ -d node_modules ] || npm install --silent
+node build.mjs
+
+ssh "$PI_HOST" "mkdir -p ~/$ZIEL/clips/vielbunt ~/$ZIEL/clips/queerbar"
+
+# Seiten, Schriften, Bilder, Clip-Liste. Die Clip-Ordner bleiben dabei unberuehrt.
+rsync -a --delete --exclude 'clips/vielbunt' --exclude 'clips/queerbar' dist/ "$PI_HOST:$ZIEL/"
+
+if [ $clips = 1 ]; then
+    rsync -a --delete clips/ "$PI_HOST:$ZIEL/clips/vielbunt/"
+    if ls clips-queerbar/*.jpg >/dev/null 2>&1; then
+        ssh "$PI_HOST" "rm -f ~/$ZIEL/clips/queerbar/*"
+        rsync -a clips-queerbar/*.jpg "$PI_HOST:$ZIEL/clips/queerbar/"
+    fi
+fi
+
+# Der Autostart (kiosk.service) zeigt noch auf ~/kiosk-lite.html, solange niemand mit sudo umgestellt hat.
+# Der Zeiger leitet dann auf die neue Weiche weiter, sonst muss nichts am Service angefasst werden.
+ssh "$PI_HOST" "[ -f ~/kiosk-lite.html.alt ] || { grep -q 'http-equiv=refresh' ~/kiosk-lite.html 2>/dev/null || cp ~/kiosk-lite.html ~/kiosk-lite.html.alt; }; printf '%s\n' '<!DOCTYPE html><meta charset=utf-8><meta http-equiv=refresh content=\"0;url=barraum/start.html\">' > ~/kiosk-lite.html"
+
+echo "Hochgeladen nach $PI_HOST:~/$ZIEL"
+if [ $neustart = 1 ]; then
+    # Beendet nur den Browser, systemd startet ihn nach ein paar Sekunden neu (kein sudo noetig)
+    ssh "$PI_HOST" 'pkill -u kiosk-admin -x cage || true'
+    echo "Browser wird neu gestartet."
+fi
+ssh "$PI_HOST" "du -sh ~/$ZIEL | cut -f1 | sed 's/^/Gesamtgroesse auf dem Pi: /'"

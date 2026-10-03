@@ -9,8 +9,32 @@ const CACHE_SEKUNDEN = 1800;
 // eigener Schluessel statt der Google-Adresse, damit nie ungefilterte Altbestaende aus dem Cache kommen
 const CACHE_KEY = 'https://kalender.vielbunt.cache/gefiltert-v1.ics';
 
+// Google-Sheet "Barraum-Kiosk": Tabs als CSV mit CORS. Der Export von Google antwortet auf Seiten, die von
+// file:// laufen (Pi im Barraum), ohne CORS-Header, deshalb geht der Barraum-Kiosk ueber diesen Weg.
+// Nur dieses eine Sheet und nur die Tabs 0 bis 7 (das Sheet ist ohnehin fuer alle mit Link lesbar).
+const SHEET_ID = '152xB92pnSdWQGcb8QO9tB1J0yOjslCxOAsFX6Ap9d1k';
+const SHEET_GIDS = new Set(['0', '1', '2', '3', '4', '5', '6', '7']);
+const SHEET_CACHE_SEKUNDEN = 15;
+
+async function sheetTab(gid) {
+  if (!SHEET_GIDS.has(gid)) return fehler('Tab nicht freigegeben');
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+  const upstream = await fetch(url, { cf: { cacheTtl: SHEET_CACHE_SEKUNDEN, cacheEverything: true } });
+  const text = upstream.ok ? await upstream.text() : '';
+  if (!text || /^\s*</.test(text)) return fehler(`Google antwortet ${upstream.status}`);
+  return new Response(text, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Cache-Control': `public, max-age=${SHEET_CACHE_SEKUNDEN}`,
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
+    const pfad = new URL(request.url).pathname.match(/^\/sheet\/(\d+)$/);
+    if (pfad) return sheetTab(pfad[1]);
     const nocache = new URL(request.url).searchParams.has('nocache');
     const cache = caches.default;
     const key = new Request(CACHE_KEY, { method: 'GET' });

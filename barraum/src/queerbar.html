@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="de" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vielbunt Barraum-Kiosk Queerbar</title>
+<!--CSS-->
+<style>
+    /* Queerbar-Modus: schwarz, pink, wie das Queerbar-Motion-Design. Claim und Motion kommen als vorgerenderte Clips,
+       alles andere (Karte, Acts, Info, Bild) steht als ruhiges Bild, damit Preise und Ausverkauft sofort stimmen. */
+    body { background: #000; }
+    #stage { display: block; }
+    .q { position: absolute; inset: 0 0 7vh 0; overflow: hidden; background: #000; text-transform: uppercase; }
+    .q.nob { bottom: 0; }
+    .blk { font-weight: 900; text-transform: uppercase; line-height: .9; letter-spacing: -.035em; white-space: nowrap; }
+    .outl { color: #000; -webkit-text-stroke: .075em var(--pink); paint-order: stroke fill; }
+    .pink { color: var(--pink); }
+
+    .q-img { position: absolute; top: 0; right: 0; bottom: 0; width: 46%; }
+    .q-img img { width: 100%; height: 100%; object-fit: cover; display: block;
+                 -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.35) 14%, rgba(0,0,0,.85) 30%, #000 44%);
+                 mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.35) 14%, rgba(0,0,0,.85) 30%, #000 44%); }
+
+    /* Claim */
+    .claim { position: absolute; left: 6vw; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; gap: 2.4vh; }
+    .claim .blk { font-size: 17vh; }
+    /* Motion (ohne Clip): grosses Logo */
+    .mlogo { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .mlogo .blk { font-size: 28vh; text-align: center; }
+    .mlogo .info { margin-top: 5vh; font-size: 3.4vh; letter-spacing: .06em; width: auto; }
+
+    /* Karte */
+    .karte { position: absolute; inset: 5vh 6vw; display: flex; flex-direction: column; }
+    .karte h1 { margin: 0 0 3vh; font-size: 11vh; font-weight: 900; color: var(--pink); line-height: .95; letter-spacing: -.03em; }
+    .karte .cols { flex: 1; display: flex; gap: 4vw; min-height: 0; }
+    .karte .col { flex: 1 1 0; min-width: 0; }
+    .karte .label { color: var(--pink); font-weight: 900; font-size: 2.6vh; letter-spacing: .18em; margin-bottom: 1.4vh; }
+    .karte .it { display: flex; align-items: baseline; font-size: 4.2vh; line-height: 1.38; white-space: nowrap; }
+    .karte .nm { font-weight: 800; }
+    .karte .ex { color: var(--pink); font-size: 2.5vh; margin-left: .45em; }
+    .karte .dots { flex: 1; border-bottom: .4vh dotted rgba(255,255,255,.34); margin: 0 1vw; transform: translateY(-.7vh); }
+    .karte .pr { font-weight: 900; }
+    .karte .hot .nm, .karte .hot .pr { color: var(--pink); }
+    .karte .out { opacity: .38; }
+    .karte .out .nm { text-decoration: line-through; text-decoration-color: var(--pink); }
+    .karte .foot { color: var(--pink); font-weight: 900; font-size: 3.4vh; display: flex; flex-wrap: wrap; gap: 0 2.4vw; margin-top: 2vh; }
+    .karte .foot .pr { color: #fff; margin-left: .35em; }
+
+    /* Acts */
+    .acts { position: absolute; left: 6vw; top: 0; bottom: 0; width: 56%; display: flex; flex-direction: column; justify-content: center; gap: 2vh; }
+    .acts .blk { font-size: 13vh; white-space: normal; }
+    .acts .ai { color: var(--pink); font-weight: 900; letter-spacing: .12em; font-size: 3.2vh; margin-top: 2vh; }
+
+    .qinfo { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 8vw; text-align: center; }
+    .qinfo h1 { margin: 0 0 4vh; font-size: 13vh; color: var(--pink); font-weight: 900; line-height: .95; }
+    .qinfo p { margin: 1.4vh 0; font-size: 5.4vh; font-weight: 800; text-transform: none; }
+    .qbild { position: absolute; inset: 0; }
+    .qbild img { width: 100%; height: 100%; object-fit: contain; }
+</style>
+</head>
+<body class="dark">
+<div id="stage"><div class="msg">Lade Inhalte...</div></div>
+<script src="clips/manifest.js"></script>
+<!--SHEET-->
+<!--LIB-->
+<script>
+(() => {
+    const S = BK.S, el = BK.el;
+    const MODE = 'queerbar';
+    const stage = document.getElementById('stage');
+    const player = BK.player(stage);
+
+    // Eingebaute Bilder liegen als Dateien neben der Seite (assets/), alles andere ist eine URL oder ein Drive-Link
+    const ASSETS = {
+        birne: { src: 'assets/birne.jpg', pos: '50% 0%' }, kugel: { src: 'assets/kugel.jpg', pos: '50% 0%' },
+        '7jahre': { src: 'assets/7jahre.jpg', pos: '50% 30%' }, 'janisha-pasta': { src: 'assets/janisha-pasta.jpg', pos: '50% 18%' },
+        leo: { src: 'assets/leo.jpg', pos: '50% 22%' }
+    };
+    function asset(name) {
+        const n = String(name || '').trim();
+        if (!n) return null;
+        const key = n.toLowerCase().replace(/\.(jpe?g|png|webp)$/, '');
+        if (ASSETS[key]) return ASSETS[key];
+        const u = BK.imgUrl(n);
+        if (/^https?:\/\//.test(u)) return { src: u, pos: '50% 40%' };
+        return null;
+    }
+
+    let set = S.settings(''), slides = [], drinks = [], songs = [];
+
+    const fmtPrice = p => {
+        const n = S.parseNum(p);
+        if (n == null) return String(p || '');
+        const s = n.toFixed(2).replace('.', ',');
+        return set.euro ? s + ' €' : s;
+    };
+
+    // Alles steht still, kein Laufband: Der Pi Zero soll hier so wenig wie moeglich rechnen
+    function frame(content) {
+        content.classList.add('q', 'nob');
+        const w = el('div', 'wrap');
+        w.style.cssText = 'position:absolute;inset:0';
+        w.appendChild(content);
+        return w;
+    }
+    function imgBox(a, cls) {
+        const box = el('div', cls || 'q-img');
+        const i = el('img');
+        i.src = a.src; i.style.objectPosition = a.pos;
+        box.appendChild(i);
+        return box;
+    }
+    const blk = (text, cls) => el('div', 'blk ' + (cls || ''), text);
+
+    const BUILD = {
+        claim(s) {
+            const q = el('div');
+            const a = asset(s.bild);
+            if (a) q.appendChild(imgBox(a));
+            const c = el('div', 'claim');
+            s.z.forEach((t, i) => { if (t) c.appendChild(blk(t, i === 1 || i === 2 ? 'outl' : '')); });
+            q.appendChild(c);
+            return q;
+        },
+        motion(s) {
+            const q = el('div', 'mlogo');
+            const logo = el('div');
+            logo.appendChild(blk('Queer', 'outl')); logo.appendChild(blk('Bar', 'outl'));
+            q.appendChild(logo);
+            if (s.z[0]) q.appendChild(el('div', 'blk info', s.z[0]));
+            return q;
+        },
+        karte(s) {
+            const q = el('div', 'karte');
+            q.appendChild(el('h1', null, s.z[0] || 'Drinks'));
+            const cats = (s.kategorien || '').split(',').map(c => c.trim()).filter(Boolean);
+            const list = cats.map(c => ({ c, items: drinks.filter(d => d.aktiv && d.kat.toLowerCase() === c.toLowerCase()) })).filter(x => x.items.length);
+            if (!list.length) return null;
+            const item = d => {
+                const r = el('div', 'it' + (d.hot ? ' hot' : '') + (d.out ? ' out' : ''));
+                r.appendChild(el('span', 'nm', d.name));
+                if (d.extra) r.appendChild(el('span', 'ex', d.extra));
+                if (d.preis) { r.appendChild(el('span', 'dots')); r.appendChild(el('span', 'pr', fmtPrice(d.preis))); }
+                return r;
+            };
+            const main = list.filter(x => x.items.length > 3 || list.length === 1);
+            const foot = list.filter(x => !main.includes(x));
+            const cols = el('div', 'cols');
+            main.forEach(x => {
+                const col = el('div', 'col');
+                col.appendChild(el('div', 'label', x.c));
+                x.items.forEach(d => col.appendChild(item(d)));
+                cols.appendChild(col);
+            });
+            q.appendChild(cols);
+            if (foot.length) {
+                const f = el('div', 'foot');
+                foot.forEach(x => x.items.forEach(d => {
+                    const sp = el('span', d.out ? 'out' : null, d.name);
+                    if (d.preis) sp.appendChild(el('span', 'pr', fmtPrice(d.preis)));
+                    f.appendChild(sp);
+                }));
+                q.appendChild(f);
+            }
+            return q;
+        },
+        special(s) {
+            const hot = drinks.filter(d => d.aktiv && d.hot);
+            if (!hot.length) return null;
+            const q = el('div', 'karte');
+            q.appendChild(el('h1', null, s.z[0] || 'Specials'));
+            const col = el('div', 'col');
+            hot.forEach(d => {
+                const r = el('div', 'it hot' + (d.out ? ' out' : ''));
+                r.appendChild(el('span', 'nm', d.name));
+                if (d.extra) r.appendChild(el('span', 'ex', d.extra));
+                if (d.preis) { r.appendChild(el('span', 'dots')); r.appendChild(el('span', 'pr', fmtPrice(d.preis))); }
+                col.appendChild(r);
+            });
+            const cols = el('div', 'cols'); cols.appendChild(col); q.appendChild(cols);
+            return q;
+        },
+        acts(s) {
+            const q = el('div');
+            const a = asset(s.bild);
+            if (a) q.appendChild(imgBox(a));
+            const c = el('div', 'acts');
+            s.z.slice(0, 3).filter(Boolean).forEach(t => c.appendChild(blk(t, 'outl')));
+            if (s.z[3]) c.appendChild(el('div', 'ai', s.z[3]));
+            q.appendChild(c);
+            return q;
+        },
+        info(s) {
+            const q = el('div', 'qinfo');
+            if (s.z[0]) q.appendChild(el('h1', null, s.z[0]));
+            s.z.slice(1).filter(Boolean).forEach(t => q.appendChild(el('p', null, t)));
+            return q;
+        },
+        bild(s) {
+            const a = asset(s.bild);
+            if (!a) return null;
+            const q = el('div', 'qbild');
+            const i = el('img'); i.src = a.src;
+            q.appendChild(i);
+            return q;
+        }
+    };
+
+    function build() {
+        const day = S.barDay(new Date());
+        const ctx = S.clipContext(set, songs);
+        const clips = new Set(BK.clips().queerbar || []);
+        const items = [];
+        for (const s of slides) {
+            if (!S.inRange(s, day)) continue;
+            const dur = (s.dauer || set.dauer || 10) * 1000;
+            const key = S.clipKey(s, ctx);
+            if (key && clips.has(key)) {
+                // vorgerendertes Standbild (siehe render/queerbar-clips.mjs)
+                const src = 'clips/queerbar/' + key + '.jpg';
+                items.push({ dur, pre: [src], node: () => { const q = el('div', 'qbild'); const i = el('img'); i.src = src; q.appendChild(i); return q; } });
+                continue;
+            }
+            const a = asset(s.bild);
+            // Fallback-Slides: leere (Karte ohne Getraenke, Bild ohne Bild) fallen weg
+            const probe = BUILD[s.typ](s);
+            if (!probe) continue;
+            items.push({ dur, pre: a ? [a.src] : [], node: () => frame(BUILD[s.typ](s)) });
+        }
+        player.setList(items.length ? items : [{ ph: true, dur: 10000, node: () => frame(BUILD.motion({ z: [''] })) }]);
+    }
+
+    BK.watchMode(MODE, s => { set = s; build(); });
+    BK.sheetLoop(['qslides', 'qdrinks', 'qsongs'], ([a, b, c]) => {
+        slides = S.qslides(a); drinks = S.qdrinks(b); songs = S.qsongs(c); build();
+    });
+    // Tageswechsel (Barabend zaehlt bis 6 Uhr): Liste regelmaessig neu bauen
+    setInterval(build, 10 * 60 * 1000);
+})();
+</script>
+</body>
+</html>

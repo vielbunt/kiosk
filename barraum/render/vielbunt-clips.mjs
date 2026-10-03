@@ -1,8 +1,8 @@
-// Rendert Szenen aus vielbunt-loop.html als MP4-Clips fuer kiosk-lite (Pi Zero spielt Videos fluessig, Canvas nicht).
-// Aufruf (aus dem Kiosk-Repo):  node kiosk-lite/render-clips.mjs
-//                         oder:  node kiosk-lite/render-clips.mjs skyline:nacht herzen:pink ...
+// Rendert Szenen aus vielbunt-loop.html als MP4-Clips fuer den Barraum-Kiosk (Pi Zero spielt Videos fluessig, Canvas nicht).
+// Aufruf (aus dem Kiosk-Repo):  node barraum/render/vielbunt-clips.mjs
+//                         oder:  node barraum/render/vielbunt-clips.mjs skyline:nacht herzen:pink ...
 // Ohne Szenen werden alle 20 Szenen gerendert, mit denselben Stilen wie auf dem Pi.
-// Umgebungsvariablen: VB_LOOP=Pfad/zu/vielbunt-loop.html  SIZE=1280x800  FPS=30  OUT=kiosk-lite/clips  MAXSEC=2 (nur zum Testen: kuerzere Clips)
+// Umgebungsvariablen: VB_LOOP=Pfad/zu/vielbunt-loop.html  SIZE=1280x800  FPS=30  OUT=barraum/clips  MAXSEC=2 (nur zum Testen: kuerzere Clips)
 //
 // Chrome rendert jedes Bild einzeln ueber window.__loop.render(t) und nimmt im Takt per MediaRecorder auf
 // (H.264 in MP4). Das laeuft in Echtzeit, 20 Szenen dauern also rund vier Minuten. ffmpeg braucht es nicht.
@@ -14,11 +14,11 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // vielbunt-loop wird in vielbunt-motion/ hier im Repo gebaut (npm run build)
-const LOOP = process.env.VB_LOOP || join(HERE, '..', 'vielbunt-motion', 'vielbunt-loop.html');
+const LOOP = process.env.VB_LOOP || join(HERE, '..', '..', 'vielbunt-motion', 'vielbunt-loop.html');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const [W, H] = (process.env.SIZE || '1280x800').split('x').map(Number);
 const FPS = Number(process.env.FPS) || 30;
-const OUT = resolve(process.env.OUT || join(HERE, 'clips'));
+const OUT = resolve(process.env.OUT || join(HERE, '..', 'clips'));
 const PORT = 9333;
 
 // "termin" fehlt mit Absicht: die Szene zeigt Live-Termine, im Video waeren die sofort veraltet

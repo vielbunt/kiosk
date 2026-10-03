@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vielbunt Barraum-Kiosk</title>
+<!--RRULE-->
+<!--CSS-->
+</head>
+<body>
+<div id="stage"><div class="msg">Lade Inhalte...</div></div>
+<script src="clips/manifest.js"></script>
+<!--SHEET-->
+<!--LIB-->
+<script>
+// Standard-Modus (Offener Treff): Sharepics, Terminuebersicht, ab und zu ein vorgerenderter Clip.
+// Optional die Getraenkekarte mit den Treffpreisen. Keine Alkohol-Verweise.
+(() => {
+    const S = BK.S, Q = BK.Q;
+    const MODE = 'standard';
+    const player = BK.player(document.getElementById('stage'));
+    const EVENTS_ONLY = Q.has('events_only') || Q.get('mode') === 'events';
+
+    let set = S.settings('');
+    let data = null;
+    let karte = [];
+    let nextClip = BK.rotator(BK.clips().vielbunt);
+
+    function build() {
+        const day0 = BK.today();
+        const events = data ? data.events.filter(e => e.start >= day0) : [];
+        const posts = data && !EVENTS_ONLY ? BK.standardPosts(data.posts) : [];
+        const dPics = (Number(Q.get('dauer')) || set.dauerPics) * 1000;
+        const dTermine = (Number(Q.get('uebersicht')) || set.dauerTermine) * 1000;
+        const dKarte = set.dauerKarte * 1000;
+        const withClips = set.clipsStandard && BK.clips().vielbunt.length > 0;
+        const items = [];
+        let lastTermine = false;
+
+        const termine = () => {
+            lastTermine = true;
+            items.push({ dur: dTermine, node: () => BK.events(events) });
+            if (set.karteStandard && karte.length) items.push({ dur: dKarte, node: () => BK.menu(karte, 'treff', false) });
+            if (withClips) items.push({ src: nextClip });
+        };
+        posts.forEach((p, i) => {
+            lastTermine = false;
+            items.push({ dur: dPics, pre: p.images, node: () => BK.pics(p.images) });
+            if (i % 2 === 1 && events.length) termine();
+        });
+        if (events.length && !lastTermine) termine();
+        // ohne Termine und Posts wenigstens die Karte, falls an
+        if (!items.length && set.karteStandard && karte.length) items.push({ dur: dKarte, node: () => BK.menu(karte, 'treff', false) });
+        if (!items.length) items.push({ ph: true, dur: 20000, node: () => BK.msg('Gerade keine Termine.', 'Mehr auf vielbunt.org') });
+        if (!data) items.forEach(i => { i.ph = true; });
+        player.setList(items);
+    }
+
+    const loop = BK.dataLoop(d => { data = d; build(); });
+    BK.watchMode(MODE, s => { set = s; build(); });
+    BK.sheetLoop(['karte'], ([k]) => { karte = S.karte(k); build(); });
+
+    loop.start().then(ok => {
+        if (!ok && !data) {
+            player.setList([{ dur: 60000, node: () => BK.msg('Keine Verbindung zum Server.', 'Neuer Versuch in einer Minute ...') }]);
+            setTimeout(() => loop.refresh().catch(() => {}), 60000);
+        }
+    });
+})();
+</script>
+</body>
+</html>

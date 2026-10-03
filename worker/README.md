@@ -2,7 +2,7 @@
 
 `shy-recipe-d443.me-02a.workers.dev` (Cloudflare-Konto me@janbamba.ch) holt den vielbunt-Google-Kalender,
 filtert ihn und liefert ihn mit CORS aus. Alle Terminanzeigen hängen daran: `kiosk.html`, `kiosk-show.html`,
-`kiosk-lite`, `vielbunt-motion` (Loop) und `kalender.py` im Postergenerator.
+`barraum`, `vielbunt-motion` (Loop) und `kalender.py` im Postergenerator.
 
 Die Regeln stehen nur hier, in `filter.js`:
 
@@ -25,3 +25,8 @@ Nach einem Zurücksetzen der geheimen Adresse in Google Kalender:
 
 Cache 30 Minuten, `?nocache` holt sofort neu. Ein ungecachter Aufruf braucht bei Cloudflare rund 60 ms CPU
 (gemessen 02.10.2026 per `wrangler tail`), der Filter selbst lokal 5 ms warm, 11 bis 19 ms kalt.
+
+## Sheet-Tabs für den Barraum-Kiosk
+
+`/sheet/<gid>` liefert einen Tab des Google Sheets Barraum-Kiosk als CSV mit CORS (nur Tabs 0 bis 7, Cache 15 Sekunden).
+Grund: Googles Export antwortet Seiten von `file://` (Pi im Barraum) ohne CORS-Header, `fetch` scheitert dort.

@@ -10,7 +10,7 @@ das Plakat zum Ausdrucken.
 | --- | --- | --- |
 | `kiosk.html` | Grundfassung, auch Quelle für Social-Media-Bild und Plakat | keine |
 | `kiosk-show.html` | der neue Kiosk, live unter vielbunt.org/kiosk.html | live gerendert aus vielbunt-loop |
-| `kiosk-lite/kiosk-lite.html` | Pi Zero im Barraum und andere schwache Geräte | vorgerenderte Videos |
+| `barraum/` | Pi Zero im Barraum, drei Modi (standard, queerbar, event) per Google Sheet | vorgerenderte Videos |
 
 Alle drei holen dieselben Daten: Posts über die WordPress-API von vielbunt.org, Termine über den
 Cloudflare-Worker `shy-recipe-d443.me-02a.workers.dev` (liefert den vielbunt-Kalender als ICS mit CORS).
@@ -34,30 +34,26 @@ Slides laufen Animationen aus dem Loop, jedes dritte Mal kommt stattdessen die T
 Modi von `kiosk.html` funktionieren weiter. Zusätzliche Parameter: `dauer` (Sekunden je Slide, 20),
 `uebersicht` (Sekunden, 30), `stil` (z. B. `stil=pink,nacht`), `intro`.
 
-Braucht einen halbwegs flotten Rechner. Auf einem Pi Zero ruckelt es, dafür gibt es kiosk-lite.
+Braucht einen halbwegs flotten Rechner. Auf einem Pi Zero ruckelt es, dafür gibt es den Barraum-Kiosk (`barraum/`).
 
-### kiosk-lite
+### barraum
 
-Die gleichen Inhalte ohne Live-Animationen: zwei Sharepics, Terminübersicht, ein vorgerenderter Clip,
-reihum. Details, Neu-Rendern der Clips und Deploy auf den Pi stehen in
-[`kiosk-lite/README.md`](kiosk-lite/README.md).
+Die gleichen Inhalte ohne Live-Animationen, dazu Queerbar- und Event-Modus, umschaltbar im Google Sheet.
+Alles Wichtige steht in [`barraum/README.md`](barraum/README.md).
 
 ## Pi im Barraum
 
-`Raspi-Zero-Barraum-Kiosk` (Pi Zero 2 W, 192.168.10.60 im Netz des queeren Zentrums, Benutzer
-`kiosk-admin`) zeigt `kiosk-lite`. Im Ordner [`pi/`](pi/) liegt, was auf dem Pi außerhalb der Seite
-eingerichtet ist:
+`Raspi-Zero-Barraum-Kiosk` (Pi Zero 2 W, 192.168.10.60 im Netz des queeren Zentrums, Benutzer `kiosk-admin`)
+zeigt den Barraum-Kiosk. Bauen, Rendern und Deployen: [`barraum/README.md`](barraum/README.md) (`barraum/deploy.sh`).
+Im Ordner [`pi/`](pi/) liegt, was auf dem Pi außerhalb der Seite eingerichtet ist:
 
 - `kiosk.service`: Autostart unter `/etc/systemd/system/`, startet Chromium im Vollbild in `cage`
-  mit `file:///home/kiosk-admin/kiosk-lite.html`. Ändern nur mit `sudo`, danach
+  mit `file:///home/kiosk-admin/barraum/start.html`. Ändern nur mit `sudo`, danach
   `sudo systemctl daemon-reload && sudo systemctl restart kiosk`.
 - `unsichtbarer-mauszeiger.py`: legt ein leeres Zeiger-Theme in `~/.icons/default` an, sonst malt
   `cage` einen Pfeil ins Bild. Einmal auf dem Pi als `kiosk-admin` ausführen.
 - Zusätzlich startet ein Cronjob von `kiosk-admin` den Kiosk jeden Tag um 11:30 neu:
   `30 11 * * * sudo systemctl restart kiosk.service`
-
-Auf dem Pi liegen neben `kiosk-lite.html` noch alte Testdateien (`kiosk-test.html`, `kiosk-cog*.html`).
-Die werden nicht mehr benutzt.
 
 ## Social Media und Plakat
 
@@ -90,7 +86,7 @@ nur im macOS-Schlüsselbund. Wie man es anlegt, steht oben in `deploy.sh`.
 python3 -m http.server 7654
 ```
 
-Dann http://localhost:7654/kiosk.html, `/kiosk-show.html` oder `/kiosk-lite/kiosk-lite.html` öffnen.
+Dann http://localhost:7654/kiosk.html, `/kiosk-show.html` oder `/barraum/dist/standard.html?modus=standard` (nach dem Bauen) öffnen.
 
 ## Cloud
 

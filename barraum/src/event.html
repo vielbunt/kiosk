@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="de" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vielbunt Barraum-Kiosk Event</title>
+<!--RRULE-->
+<!--CSS-->
+</head>
+<body class="night">
+<div id="stage"><div class="msg">Lade Inhalte...</div></div>
+<script src="clips/manifest.js"></script>
+<!--SHEET-->
+<!--LIB-->
+<script>
+// Event-Modus: begruesst zur Veranstaltung des Tages (aus WordPress, im Sheet ueberschreibbar),
+// zeigt deren Sharepics, die Termine und ruhige Clips. Ablauf, Dauern und Reihenfolge stehen im Tab Event-Ablauf.
+(() => {
+    const S = BK.S;
+    const MODE = 'event';
+    const player = BK.player(document.getElementById('stage'));
+    // ruhige Clips fuer den Event-Abend (Namen ohne .mp4)
+    const CALM = ['wellen-hell', 'skyline-nacht', 'pride-hell', 'skylineLinie-verlauf', 'danke-hell', 'logoZoom-pink'];
+
+    let set = S.settings('');
+    let data = null, ev = S.eventKV(''), ablauf = [], karte = [];
+
+    // Standardablauf, falls der Tab leer ist
+    const DEFAULT = [
+        { aktiv: true, typ: 'willkommen', dauer: 15, z: ['', '', '', ''], bild: '' },
+        { aktiv: true, typ: 'sharepics', dauer: 25, z: ['', '', '', ''], bild: '' },
+        { aktiv: true, typ: 'termine', dauer: 25, z: ['', '', '', ''], bild: '' },
+        { aktiv: true, typ: 'clip', dauer: 20, z: ['', '', '', ''], bild: '' }
+    ];
+
+    function calmClips() {
+        const all = BK.clips().vielbunt;
+        const calm = all.filter(c => CALM.some(n => c.includes('/' + n)));
+        return calm.length ? calm : all;
+    }
+    const clipByName = name => {
+        const n = name.trim().replace(/\.mp4$/, '');
+        return BK.clips().vielbunt.find(c => c.endsWith('/' + n + '.mp4'));
+    };
+    let rotate = BK.rotator(calmClips());
+
+    const dd = d => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+
+    // Wer ist heute dran? Sheet-Angaben gehen vor Automatik.
+    function resolve() {
+        const found = ev.automatik && data ? BK.findEvents(data.posts, ev) : { list: [], tag: 'keins' };
+        const posts = found.list;
+        let name = ev.name, sub = ev.untertitel, gruss = ev.gruss;
+        if (!name && posts.length) {
+            if (found.tag === 'naechstes') {
+                gruss = 'Herzlich willkommen';
+                name = 'im Queeren Zentrum';
+                sub = sub || `Als Nächstes: ${posts[0].name} am ${dd(posts[0].from)}`;
+            } else name = posts.map(p => p.name).join(' & ');
+        } else if (!name) {
+            gruss = 'Herzlich willkommen';
+            name = 'im Queeren Zentrum';
+        }
+        return { name, sub, gruss, posts };
+    }
+
+    function build() {
+        const R = resolve();
+        const day = S.barDay(new Date());
+        const rows = (ablauf.length ? ablauf : DEFAULT).filter(r => S.inRange(r, day));
+        const items = [];
+        const events = data ? data.events.filter(e => e.start >= BK.today()) : [];
+        for (const r of rows) {
+            const dur = (r.dauer || 15) * 1000;
+            if (r.typ === 'willkommen') {
+                items.push({ dur, node: () => BK.welcome(r.z[2] || R.gruss, r.z[0] || R.name, r.z[1] || R.sub) });
+            } else if (r.typ === 'sharepics') {
+                // eigene Bilder (Spalte Bild oder Tab Event) vor den Bildern aus WordPress
+                const own = (r.bild ? r.bild.split('|') : ev.sharepics).map(s => BK.imgUrl(s)).filter(Boolean);
+                const groups = [];
+                if (own.length) for (let i = 0; i < own.length; i += 2) groups.push(own.slice(i, i + 2));
+                else R.posts.forEach(p => groups.push(p.images));
+                groups.forEach(g => items.push({ dur, pre: g, node: () => BK.pics(g) }));
+            } else if (r.typ === 'termine') {
+                if (events.length) items.push({ dur, node: () => BK.events(events) });
+            } else if (r.typ === 'karte') {
+                if (karte.length) items.push({ dur, node: () => BK.menu(karte, ev.preise, true) });
+            } else if (r.typ === 'clip') {
+                const fixed = r.bild && clipByName(r.bild);
+                if (fixed) items.push({ src: () => fixed, dur: 90000 });
+                else if (BK.clips().vielbunt.length) items.push({ src: rotate });
+            } else if (r.typ === 'info') {
+                items.push({ dur, node: () => BK.info([r.z[0], r.z[1], r.z[2], r.z[3]]) });
+            } else if (r.typ === 'bild' && r.bild) {
+                const src = BK.imgUrl(r.bild);
+                items.push({ dur, pre: [src], node: () => BK.fullImage(src) });
+            }
+        }
+        // solange Posts und Termine fehlen, ist alles nur vorlaeufig
+        if (!data) items.forEach(i => { i.ph = true; });
+        player.setList(items.length ? items : [{ ph: true, dur: 20000, node: () => BK.welcome('Herzlich willkommen', 'im Queeren Zentrum', '') }]);
+    }
+
+    const loop = BK.dataLoop(d => { data = d; build(); });
+    BK.watchMode(MODE, s => { set = s; build(); });
+    BK.sheetLoop(['event', 'ablauf', 'karte'], ([e, a, k]) => {
+        ev = S.eventKV(e); ablauf = S.ablauf(a); karte = S.karte(k); build();
+    });
+    loop.start().then(ok => {
+        if (!ok && !data) build();
+    });
+})();
+</script>
+</body>
+</html>

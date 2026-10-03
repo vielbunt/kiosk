@@ -1,0 +1,12 @@
+{
+  "name": "barraum-kiosk",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Barraum-Kiosk fuer den Pi: standard, queerbar, event",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

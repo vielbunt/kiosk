@@ -95,7 +95,7 @@ nicht fälschlich heruntergeschaltet. Auf schneller Hardware ändert sich nichts
 
 `npm run kiosk` baut aus `kiosk.html` im Kiosk-Repo (eine Ebene hoeher, anderer Pfad per `KIOSK_DIR`)
 die Show-Fassung `kiosk-show.html` mit eingebettetem Loop. Die leichte Variante für den Pi im Barraum
-(`kiosk-lite/`, Animationen als vorgerenderte Videos aus diesem Loop) liegt ebenfalls im Kiosk-Repo.
+(`barraum/`, Animationen als vorgerenderte Videos aus diesem Loop) liegt ebenfalls im Kiosk-Repo.
 
 ## Schriften
 

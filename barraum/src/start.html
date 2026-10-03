@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="de" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="google" content="notranslate">
+<title>vielbunt Barraum-Kiosk Start</title>
+<style>html,body{margin:0;height:100%;background:#000;cursor:none}</style>
+</head>
+<body>
+<!--SHEET-->
+<script>
+// Weiche: liest im Sheet den Modus und springt auf standard.html, queerbar.html oder event.html.
+// Jede Seite prueft danach selbst jede Minute, ob der Modus gewechselt hat.
+(async () => {
+    const Q = new URLSearchParams(location.search);
+    const S = window.BKSheet;
+    let modus = Q.get('modus') || '';
+    if (!S.MODES.includes(modus)) {
+        modus = 'standard';
+        try {
+            const url = `${S.PROXY}${S.GID.einstellungen}?t=${Date.now()}`;
+            const ctrl = new AbortController();
+            setTimeout(() => ctrl.abort(), 8000);
+            const text = await (await fetch(url, { cache: 'no-store', signal: ctrl.signal })).text();
+            if (!/^\s*</.test(text)) { modus = S.settings(text).modus; try { localStorage.setItem('bk:tab:einstellungen', text); } catch (e) { } }
+        } catch (e) {
+            try { modus = S.settings(localStorage.getItem('bk:tab:einstellungen') || '').modus; } catch (e2) { }
+        }
+    }
+    location.replace(new URL(modus + '.html' + location.search, location.href).href);
+})();
+</script>
+</body>
+</html>

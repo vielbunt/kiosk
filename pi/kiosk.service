@@ -1,4 +1,4 @@
-# /etc/systemd/system/kiosk.service auf dem Pi im Barraum (Stand 27.09.2026)
+# /etc/systemd/system/kiosk.service auf dem Pi im Barraum (Stand 03.10.2026, zeigt auf die Barraum-Weiche)
 [Unit]
 Description=Kiosk Setup
 After=network-online.target
@@ -23,7 +23,7 @@ ExecStartPre=/bin/sh -c 'while ! ping -c 1 -W 2 vielbunt.org >/dev/null 2>&1; do
 # Startet den Browser im Kiosk-Modus
 #ExecStart=/usr/bin/cage -s -- /usr/bin/chromium --kiosk --no-memcheck --lang=de --enable-gpu-rasterization --enable-zero-copy --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream --use-fake-device-for-media-stream --restore-last-session=false --memory-pressure-off --incognito --disable-infobars --disable-translate   --disable-features=TranslateUI,Translate --disable-notifications --noerrdialogs --ignore-gpu-blocklist file:///home/kiosk-admin/kiosk-test.html
 #ExecStart=/usr/bin/cage -s -- /usr/bin/chromium --kiosk --no-memcheck --lang=de --enable-gpu-rasterization --enable-zero-copy --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream --use-fake-device-for-media-stream --restore-last-session=false --memory-pressure-off --incognito --disable-infobars --disable-translate   --disable-features=TranslateUI,Translate --disable-notifications --noerrdialogs --ignore-gpu-blocklist https://www.vielbunt.org/kiosk.html?animation=false
-ExecStart=/usr/bin/cage -s -- /usr/bin/chromium --kiosk --no-memcheck --lang=de --enable-gpu-rasterization --enable-zero-copy --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream --use-fake-device-for-media-stream --restore-last-session=false --memory-pressure-off --incognito --disable-infobars --disable-translate   --disable-features=TranslateUI,Translate --disable-notifications --noerrdialogs --ignore-gpu-blocklist file:///home/kiosk-admin/kiosk-lite.html
+ExecStart=/usr/bin/cage -s -- /usr/bin/chromium --kiosk --no-memcheck --lang=de --enable-gpu-rasterization --enable-zero-copy --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream --use-fake-device-for-media-stream --restore-last-session=false --memory-pressure-off --incognito --disable-infobars --disable-translate   --disable-features=TranslateUI,Translate --disable-notifications --noerrdialogs --ignore-gpu-blocklist file:///home/kiosk-admin/barraum/start.html
 #ExecStart=/usr/bin/cage -s -- /usr/bin/cog file:///home/kiosk-admin/kiosk-cog.html
 Restart=always
 RestartSec=10
