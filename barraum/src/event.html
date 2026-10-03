@@ -49,10 +49,15 @@
 
     // Wer ist heute dran? Sheet-Angaben gehen vor Automatik.
     function resolve() {
-        const found = ev.automatik && data ? BK.findEvents(data.posts, ev) : { list: [], tag: 'keins' };
+        const found = ev.automatik && data ? BK.findEvents(data.posts, ev, data.cal) : { list: [], tag: 'keins' };
         const posts = found.list;
         let name = ev.name, sub = ev.untertitel, gruss = ev.gruss;
-        if (!name && posts.length) {
+        const hhmm = d => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        if (!name && (found.tag === 'laeuft' || found.tag === 'gleich')) {
+            // Kalender kennt die Uhrzeit: das laufende Event, bei Bedarf mit Beitrag fuer die Sharepics
+            name = found.name;
+            if (!sub && found.cal) sub = (found.tag === 'gleich' ? 'Gleich: ab ' : 'Heute ab ') + hhmm(found.cal.start) + ' Uhr';
+        } else if (!name && posts.length) {
             if (found.tag === 'naechstes') {
                 gruss = 'Herzlich willkommen';
                 name = 'im Queeren Zentrum';
@@ -110,6 +115,8 @@
     loop.start().then(ok => {
         if (!ok && !data) build();
     });
+    // Die Uhrzeit entscheidet, welches Event laeuft: regelmaessig neu bauen
+    setInterval(build, 5 * 60 * 1000);
 })();
 </script>
 </body>

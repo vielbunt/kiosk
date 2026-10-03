@@ -179,10 +179,18 @@
     // Beitraege fuers Sharepic-Karussell im Standard-Modus (ohne Queerbar, das ist ein Abendprogramm mit Alkohol)
     BK.standardPosts = posts => posts.filter(p => !p.cats.includes(CAT_QUEERBAR));
 
-    // Das Event von heute (oder per Datum/Suchwort aus dem Sheet). Der offene Jugendtreff zaehlt nicht als Event.
-    BK.findEvents = function (posts, ev) {
+    // Woerter eines Titels zum Vergleichen (ohne Satzzeichen, nur ab 3 Buchstaben)
+    const words = t => BK.clean(t).toLowerCase().split(/[^a-z0-9äöüß]+/).filter(w => w.length >= 3);
+    const NO_EVENT = /wochenprogramm|jugendtreff|offener treff|treffbunt|villaq/i;
+
+    // Das Event, das gerade stattfindet (oder per Datum/Suchwort aus dem Sheet gewaehlt wird).
+    // Mehrere Events an einem Tag: Die Uhrzeit entscheidet. Der Kalender kennt Uhrzeiten, die WordPress-Beitraege nicht,
+    // deshalb wird das laufende Kalender-Event dem passenden Beitrag zugeordnet (gleiche Woerter im Titel).
+    // cal: Kalendertermine mit Uhrzeit, now: aktuelle Zeit (zum Testen ueberschreibbar)
+    BK.findEvents = function (posts, ev, cal, now) {
+        now = now || new Date();
         const today = BK.today();
-        const isEvent = p => p.cats.includes(CAT_VERANSTALTUNG) && !p.cats.includes(CAT_JUGEND) && !/wochenprogramm|jugendtreff/i.test(p.title);
+        const isEvent = p => p.cats.includes(CAT_VERANSTALTUNG) && !p.cats.includes(CAT_JUGEND) && !NO_EVENT.test(p.title);
         const cands = posts.filter(p => p.from && isEvent(p));
         if (ev.suchwort) {
             const w = ev.suchwort.toLowerCase();
@@ -190,8 +198,37 @@
             if (hit.length) return { list: hit, tag: 'gewaehlt' };
         }
         const day = ev.datum || today;
-        const now = cands.filter(p => p.from <= day && p.to >= day);
-        if (now.length) return { list: now, tag: 'heute' };
+        const todays = cands.filter(p => p.from <= day && p.to >= day);
+
+        // Kalender: was laeuft jetzt (30 Minuten vor Beginn bis zum Ende), sonst was kommt heute noch als Naechstes
+        if (!ev.datum && cal && cal.length) {
+            const timed = cal.filter(c => !c.allDay && c.end && !NO_EVENT.test(c.summary || '')
+                && (c.start.toDateString() === now.toDateString() || (c.start <= now && c.end >= now)));
+            const running = timed.filter(c => c.start.getTime() - 30 * 60000 <= now && c.end >= now)
+                .sort((a, b) => Math.abs(a.start - now) - Math.abs(b.start - now));
+            const upcoming = timed.filter(c => c.start > now).sort((a, b) => a.start - b.start);
+            const pickCal = running[0] || null;
+            // passenden Beitrag finden
+            const matchPost = c => {
+                const cw = new Set(words(c.summary));
+                let best = null, score = 0;
+                for (const p of (todays.length ? todays : cands)) {
+                    const sc = words(p.name).filter(w => cw.has(w)).length;
+                    if (sc > score) { best = p; score = sc; }
+                }
+                return best;
+            };
+            if (pickCal) {
+                const p = matchPost(pickCal) || (todays.length === 1 ? todays[0] : null);
+                return { list: p ? [p] : [], tag: 'laeuft', cal: pickCal, name: p ? p.name : BK.clean(pickCal.summary) };
+            }
+            if (todays.length > 1 && upcoming[0]) {
+                // gerade nichts im Kalender: das naechste heute, sonst das erste des Tages
+                const p = matchPost(upcoming[0]);
+                if (p) return { list: [p], tag: 'gleich', cal: upcoming[0], name: p.name };
+            }
+        }
+        if (todays.length) return { list: todays, tag: 'heute' };
         const next = cands.filter(p => p.from > day).sort((a, b) => a.from - b.from)[0];
         if (next) return { list: [next], tag: 'naechstes' };
         return { list: [], tag: 'keins' };
@@ -240,7 +277,7 @@
             // interne Termine filtert schon der Worker (worker/filter.js)
             if (!e.rrule) {
                 if (e.start >= day0 && e.start <= until && !(e.ex && e.ex.includes(e.start.getTime())))
-                    out.push({ summary: e.summary, start: e.start });
+                    out.push({ summary: e.summary, start: e.start, end: e.end || null, allDay: !e.tz && e.start.getHours() === 0 && e.start.getMinutes() === 0 && !e.end });
                 continue;
             }
             const u = e.rrule.match(/UNTIL=(\d{8})/);
@@ -255,17 +292,20 @@
                     const d = e.tz ? new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), n.getUTCHours(), n.getUTCMinutes(), n.getUTCSeconds()) : n;
                     const t = d.getTime();
                     if ((e.ex && e.ex.includes(t)) || skip.includes(t)) continue;
-                    out.push({ summary: e.summary, start: d });
+                    out.push({ summary: e.summary, start: d, end: e.end ? new Date(d.getTime() + (e.end - e.start)) : null });
                 }
             } catch (err) { console.error('RRULE kaputt', e.rrule, err); }
         }
-        return out.sort((a, b) => a.start - b.start).slice(0, MAX_EVENTS);
+        return out.sort((a, b) => a.start - b.start);
     }
 
     BK.fetchEvents = async function () {
         const text = await (await fetchWithTimeout(ICS_URL)).text();
         if (!text.includes('BEGIN:VCALENDAR')) throw new Error('kein Kalender');
-        return parseICS(text);
+        const all = parseICS(text);
+        // events: die naechsten fuer die Uebersicht, cal: alles in den naechsten zwei Tagen mit Uhrzeit (fuers laufende Event)
+        const bis = BK.today().getTime() + 2 * 864e5;
+        return { events: all.slice(0, MAX_EVENTS), cal: all.filter(e => e.start.getTime() < bis) };
     };
 
     // ---------- Daten halten ----------
@@ -277,6 +317,7 @@
             const d = JSON.parse(cacheGet('data'));
             if (d) {
                 d.events.forEach(e => { e.start = new Date(e.start); });
+                d.cal = (d.cal || []).map(e => Object.assign(e, { start: new Date(e.start), end: e.end && new Date(e.end) }));
                 d.posts.forEach(p => { p.from = p.from && new Date(p.from); p.to = p.to && new Date(p.to); });
                 data = d;
             }
@@ -288,7 +329,8 @@
             if (p.status === 'rejected' && e.status === 'rejected') return false;
             data = {
                 posts: p.status === 'fulfilled' ? p.value : (data ? data.posts : []),
-                events: e.status === 'fulfilled' ? e.value : (data ? data.events : []),
+                events: e.status === 'fulfilled' ? e.value.events : (data ? data.events : []),
+                cal: e.status === 'fulfilled' ? e.value.cal : (data ? data.cal || [] : []),
                 ts: Date.now()
             };
             cacheSet('data', JSON.stringify(data));
