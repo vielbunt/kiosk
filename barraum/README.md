@@ -121,6 +121,14 @@ ssh -t kiosk-admin@192.168.10.60 'sudo cp ~/kiosk.service.new /etc/systemd/syste
 Der Browser lässt sich ohne `sudo` neu starten: `ssh kiosk-admin@192.168.10.60 'pkill -u kiosk-admin -x cage'`.
 Mauszeiger: `../pi/unsichtbarer-mauszeiger.py` (einmal auf dem Pi, ist schon erledigt).
 
+## Von außerhalb deployen (Tailscale)
+
+Auf dem Pi läuft Tailscale (Rechnername `barraum-pi`, 100.70.7.126, Tailscale SSH an), auf dem Mac ebenfalls.
+`deploy.sh` nimmt im Netz des queeren Zentrums die lokale Adresse und sonst automatisch `kiosk-admin@barraum-pi`.
+Das geht also von überall, auch per Handy-Hotspot, solange der Pi Internet hat und Tailscale am Mac läuft.
+Einmal pro Mac nötig: `ssh -o StrictHostKeyChecking=accept-new kiosk-admin@barraum-pi true`.
+Tailscale belegt auf dem Pi etwa 30 MB RAM. Ausschalten: `sudo tailscale down`.
+
 ## Aus dem Quellcode
 
 Cera Pro (Schriften) und die Queerbar-Fotos sind nicht im Repo. Gebraucht: `barraum/fonts/Cera-Pro-Bold.woff2` und

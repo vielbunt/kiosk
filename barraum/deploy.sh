@@ -8,12 +8,21 @@
 #
 # Der Pi laedt im Betrieb alles selbst nach (Sheet, Posts, Termine). Neu hochladen muss man nur, wenn sich
 # der Code oder die vorgerenderten Clips aendern. Den Modus (standard / queerbar / event) stellt man im Sheet um.
-# Ziel: PI_HOST (Standard kiosk-admin@192.168.10.60), im Ordner ~/barraum auf dem Pi.
+# Ziel: Pi im Barraum, im Ordner ~/barraum. Im lokalen Netz kiosk-admin@192.168.10.60, sonst automatisch ueber
+# Tailscale (barraum-pi), egal wo man gerade ist. PI_HOST=... erzwingt eine Adresse.
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PI_HOST="${PI_HOST:-kiosk-admin@192.168.10.60}"
+# Erst die Adresse im lokalen Netz, sonst Tailscale (Rechnername barraum-pi). Mit PI_HOST laesst sich das ueberschreiben.
+if [ -z "${PI_HOST:-}" ]; then
+    if ssh -o ConnectTimeout=3 -o BatchMode=yes kiosk-admin@192.168.10.60 true 2>/dev/null; then
+        PI_HOST="kiosk-admin@192.168.10.60"
+    else
+        PI_HOST="kiosk-admin@barraum-pi"
+        echo "Pi nicht im lokalen Netz, nehme Tailscale ($PI_HOST)"
+    fi
+fi
 ZIEL="barraum"
 clips=1; neustart=1; rendern=0
 for a in "$@"; do
