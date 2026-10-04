@@ -180,7 +180,7 @@
         return h.toString(16).padStart(8, '0');
     }
     // Version hochzaehlen, wenn sich das Aussehen der Clips aendert (z. B. neue Queerbar-Kiosk-Fassung)
-    const CLIP_VERSION = 2;
+    const CLIP_VERSION = 3;
 
     // Nur Claim und Motion werden vorgerendert (als Standbild, ohne Laufband). Der Schluessel enthaelt alles, was zu sehen ist.
     function clipKey(s, ctx) {

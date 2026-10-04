@@ -371,6 +371,45 @@
         return load;
     };
 
+    // ---------- Umrandete Schrift ----------
+
+    // Nur der Rand ist sichtbar, innen durchsichtig. Ein SVG-Filter nimmt den Aussenrand der ganzen Buchstabenform
+    // (ein Text-Stroke zeigt dagegen Ueberlappungen einzelner Buchstabenteile, z. B. beim Q, als innere Linien).
+    const NS = 'http://www.w3.org/2000/svg';
+    let defs = null;
+    const rings = {};
+    function ring(r) {
+        r = Math.max(1, Math.round(r * 2) / 2);
+        const id = 'ring-' + String(r).replace('.', '_');
+        if (!defs) {
+            defs = document.createElementNS(NS, 'svg');
+            defs.setAttribute('width', '0'); defs.setAttribute('height', '0');
+            defs.style.cssText = 'position:absolute;width:0;height:0';
+            document.body.appendChild(defs);
+        }
+        if (!rings[id]) {
+            const f = document.createElementNS(NS, 'filter');
+            f.setAttribute('id', id);
+            f.setAttribute('x', '-10%'); f.setAttribute('y', '-30%'); f.setAttribute('width', '120%'); f.setAttribute('height', '160%');
+            f.setAttribute('color-interpolation-filters', 'sRGB');
+            const add = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); f.appendChild(e); };
+            add('feMorphology', { in: 'SourceAlpha', operator: 'dilate', radius: r, result: 'd' });
+            add('feComposite', { in: 'd', in2: 'SourceAlpha', operator: 'out', result: 'r' });
+            add('feFlood', { 'flood-color': '#E6175F', result: 'f' });
+            add('feComposite', { in: 'f', in2: 'r', operator: 'in' });
+            defs.appendChild(f);
+            rings[id] = true;
+        }
+        return `url(#${id})`;
+    }
+    // Nach dem Einhaengen aufrufen (die Schriftgroesse muss bekannt sein): alle .outl bekommen den Randfilter
+    BK.outline = function (root) {
+        root.querySelectorAll('.outl').forEach(e => {
+            const fs = parseFloat(getComputedStyle(e).fontSize) || 40;
+            e.style.filter = ring(fs * 0.0375);
+        });
+    };
+
     // ---------- Slides ----------
 
     BK.msg = function (text, sub) {
@@ -487,7 +526,7 @@
             skip() { step(); }
         };
 
-        function show(node) { stage.replaceChildren(node); }
+        function show(node) { stage.replaceChildren(node); if (node.querySelector) BK.outline(node); }
 
         async function step() {
             clearTimeout(timer);

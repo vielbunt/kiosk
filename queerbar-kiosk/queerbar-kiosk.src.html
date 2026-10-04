@@ -87,11 +87,11 @@
     white-space: nowrap;
   }
   .nocase { text-transform: none; }
-  /* Umrandung außen wie im Poster: Kontur doppelt so dick, schwarze Füllung liegt drüber */
+  /* Umrandung wie im Poster: nur der Rand ist sichtbar, innen durchsichtig. Den Rand zeichnet ein SVG-Filter
+     (applyOutlines), der den Aussenrand der ganzen Buchstabenform nimmt. Ein Text-Stroke zeigt dagegen die
+     Ueberlappungen einzelner Buchstabenteile (z. B. beim Q) als innere Linien. */
   .outline {
-    color: #000;
-    -webkit-text-stroke: 0.075em var(--pink);
-    paint-order: stroke fill;
+    color: #fff;
   }
   .pink { color: var(--pink); }
   .ib { display: inline-block; }
@@ -100,8 +100,8 @@
   .ln {
     display: block;
     overflow: hidden;
-    padding: 0.14em 0.1em 0.03em;
-    margin: -0.14em -0.1em -0.03em;
+    padding: 0.2em 0.16em 0.3em;
+    margin: -0.2em -0.16em -0.3em;
     line-height: 0.9;
   }
   .ln > span { display: inline-block; vertical-align: top; }
@@ -261,9 +261,7 @@
     text-transform: uppercase;
     line-height: 0.86;
     letter-spacing: -0.035em;
-    color: #000;
-    -webkit-text-stroke: 0.1em var(--pink);
-    paint-order: stroke fill;
+    color: #fff;
     text-align: center;
   }
   .mlogo span { display: block; }
@@ -515,6 +513,42 @@
     { opacity: 0.9, offset: 0.25, easing: STEP }, { opacity: 0.05, offset: 0.45, easing: STEP },
     { opacity: 0.6, offset: 0.55, easing: STEP }, { opacity: 0, offset: 0.7 }, { opacity: 0, offset: 1 }
   ];
+
+  // Rand der Buchstabenform als Filter (Aussenrand der Form minus die Form selbst), je Groesse ein Filter
+  const RING_NS = "http://www.w3.org/2000/svg";
+  const ringDefs = (() => {
+    const svg = document.createElementNS(RING_NS, "svg");
+    svg.setAttribute("width", "0"); svg.setAttribute("height", "0");
+    svg.style.cssText = "position:absolute;width:0;height:0";
+    document.body.appendChild(svg);
+    return svg;
+  })();
+  const ringCache = {};
+  function ringFilter(r) {
+    r = Math.max(1, Math.round(r * 2) / 2);
+    const id = "ring-" + String(r).replace(".", "_");
+    if (!ringCache[id]) {
+      const f = document.createElementNS(RING_NS, "filter");
+      f.setAttribute("id", id);
+      f.setAttribute("x", "-10%"); f.setAttribute("y", "-30%"); f.setAttribute("width", "120%"); f.setAttribute("height", "160%");
+      f.setAttribute("color-interpolation-filters", "sRGB");
+      const el = (n, a) => { const e = document.createElementNS(RING_NS, n); for (const k in a) e.setAttribute(k, a[k]); f.appendChild(e); };
+      el("feMorphology", { in: "SourceAlpha", operator: "dilate", radius: r, result: "d" });
+      el("feComposite", { in: "d", in2: "SourceAlpha", operator: "out", result: "r" });
+      el("feFlood", { "flood-color": PINK, result: "f" });
+      el("feComposite", { in: "f", in2: "r", operator: "in" });
+      ringDefs.appendChild(f);
+      ringCache[id] = true;
+    }
+    return `url(#${id})`;
+  }
+  // Nach dem Bauen eines Slides: alle umrandeten Texte bekommen ihren Randfilter (Dicke wie im Poster: .0375em, Logo .05em)
+  function applyOutlines(root) {
+    root.querySelectorAll(".outline, .mlogo").forEach(e => {
+      const fs = parseFloat(getComputedStyle(e).fontSize) || 40;
+      e.style.filter = ringFilter(fs * (e.classList.contains("mlogo") ? 0.05 : 0.0375));
+    });
+  }
 
   function anim(el, frames, opts) {
     if (!el) return null;
@@ -1336,6 +1370,7 @@
     let ok = false;
     try {
       ok = BUILD[s.typ](s, inst, dur);
+      if (ok) applyOutlines(el);
     } catch (e) {
       console.error("Slide kaputt:", s, e);
     }

@@ -88,7 +88,7 @@ try {
     await cdp('Page.navigate', { url });
     // Screencast erst starten, wenn die Seite steht (sonst bricht ihn die Navigation ab)
     for (let i = 0; i < 150 && !(await js('!!window.__qbLog').catch(() => false)); i++) await sleep(200);
-    await cdp('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: W, maxHeight: H, everyNthFrame: 2 });
+    await cdp('Page.startScreencast', { format: 'jpeg', quality: 85, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
 
     // laufen lassen, bis der erste Slide zum dritten Mal beginnt
     const t0wall = Date.now();
@@ -157,10 +157,11 @@ try {
         '-tune', 'fastdecode', '-bf', '0', '-refs', '1', '-crf', '20', '-maxrate', '4M', '-bufsize', '8M', '-profile:v', 'baseline', '-level', '3.2', '-movflags', '+faststart', mp4], { stdio: 'inherit' });
     if (r.status !== 0) throw new Error('ffmpeg ist fehlgeschlagen');
 
-    const gaps = cut.slice(1).filter((f, i) => f.ts - cut[i].ts > 0.07).length;
+    // Wie gleichmaessig kam die Aufnahme? Das Laufband bewegt sich nur dann ruhig, wenn die Bildabstaende klein bleiben.
+    const gaps = cut.slice(1).filter((f, i) => f.ts - cut[i].ts > 0.034).length;
     const info = { w: W, h: H, duration: +L.toFixed(3), built: new Date().toISOString(), tag: tag || null, slides };
     writeFileSync(join(OUT, 'show.js'), 'window.BK_SHOW=' + JSON.stringify(info) + ';\n');
-    console.log(`fertig: ${mp4} (${(statSync(mp4).size / 1e6).toFixed(1)} MB, ${cut.length} Bilder, ${gaps} Luecken ueber 70 ms)`);
+    console.log(`fertig: ${mp4} (${(statSync(mp4).size / 1e6).toFixed(1)} MB, ${cut.length} Bilder, ${gaps} Luecken ueber 34 ms (bei 60 Bildern pro Sekunde sollten es kaum welche sein))`);
     console.log(slides.map(s => `  ${s.i} ${s.typ.padEnd(6)} ${s.from}-${s.to} s${s.prices ? `, ${s.prices.length} Preise` : ''}`).join('\n'));
 } finally {
     ws?.close();
