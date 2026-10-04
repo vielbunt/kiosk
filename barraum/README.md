@@ -7,8 +7,11 @@ Nachfolger von `kiosk-lite`.
 
 ## Die drei Modi
 
-Der Modus steht im Google Sheet [Barraum-Kiosk](https://docs.google.com/spreadsheets/d/152xB92pnSdWQGcb8QO9tB1J0yOjslCxOAsFX6Ap9d1k/edit),
-Tab **Einstellungen**, Zeile **Modus**. Der Pi fragt diese eine kleine Tabelle jede Minute ab und wechselt
+Der Modus wird im Google Sheet [Barraum-Kiosk](https://docs.google.com/spreadsheets/d/152xB92pnSdWQGcb8QO9tB1J0yOjslCxOAsFX6Ap9d1k/edit)
+im Tab **Start** gewählt (Dropdown B3). Einstellungen, Zeile Modus ist eine Formel darauf (`=Start!B3`), die der Pi liest.
+Der Tab Start erklärt je gewähltem Modus, was zu tun ist, und verlinkt die passenden Tabs. Optional blendet
+[`sheet-tabs.gs`](sheet-tabs.gs) (Apps Script, von Hand einzubauen) nicht benötigte Tabs aus.
+ Der Pi fragt diese eine kleine Tabelle jede Minute ab und wechselt
 von selbst, ohne Neustart. **Standard ist `standard`.**
 
 | Modus | Seite | Inhalt |
