@@ -105,6 +105,9 @@
     line-height: 0.9;
   }
   .ln > span { display: inline-block; vertical-align: top; }
+  /* Mehrere Zeilen untereinander: als Flex-Spalte, sonst fallen die negativen Raender benachbarter Zeilen zusammen
+     und der Abstand waere um das Innenpolster zu gross. gap = der Abstand, den das Layout vorher hatte. */
+  div:has(> .ln + .ln) { display: flex; flex-direction: column; gap: 0.03em; }
 
   /* ---------- Bilder ---------- */
   .media { position: absolute; overflow: hidden; z-index: 0; }
@@ -1557,6 +1560,48 @@
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
 
+  // Fuer barraum/render/show.mjs: Laufband als Bild herauslösen, damit es im Video mit ganzzahligen Pixeln pro Bild läuft.
+  // track: das ganze Band (zweimal die Wortfolge) auf voller Länge, vb: das vielbunt-Logo mit Verlauf auf durchsichtigem Grund.
+  window.__qbStrip = (mode, periodPx) => {
+    const yExact = (SH + 3) * scale, yInt = Math.round(yExact);
+    slidesEl.style.display = "none"; wipeEl.style.display = "none";
+    document.documentElement.style.background = "transparent"; document.body.style.background = "transparent";
+    if (mode === "track") {
+      // Das Band mit genau periodPx Bildschirmpixeln Periode neu legen: die Wörter werden wiederholt, bis sie die Periode
+      // füllen, die Lücke geht auf den letzten Abstand. So läuft das Band im Video mit ganzen Pixeln pro Bild und am
+      // Schleifenende wieder genau am Anfang.
+      const orig = bandEl.querySelector(".btrack");
+      const first = [...orig.children].slice(0, orig.children.length / 2);
+      const Ps = periodPx / scale;
+      const w = document.createElement("div");
+      const vh = Math.round(H * scale) - yInt;
+      const tk = document.createElement("div");
+      tk.className = "btrack"; tk.style.animation = "none"; tk.style.left = "0"; tk.style.top = ((yExact - yInt) / scale) + "px";
+      w.style.cssText = `position:fixed;left:0;top:0;background:#000;overflow:hidden;width:${Math.ceil(Ps * 2)}px;height:${vh / scale}px;transform-origin:0 0;transform:scale(${scale});z-index:99`;
+      w.appendChild(tk);
+      document.body.appendChild(w);
+      const group = [];
+      let sum = 0, i = 0;
+      while (true) {
+        const c = first[i % first.length].cloneNode(true);
+        tk.appendChild(c);
+        const cw = c.getBoundingClientRect().width / scale;
+        if (sum + cw > Ps) { c.remove(); break; }
+        sum += cw; group.push(c); i++;
+        if (i > 4000) break;
+      }
+      const last = group[group.length - 1];
+      last.style.paddingRight = (parseFloat(getComputedStyle(last).paddingRight) + (Ps - sum)) + "px";
+      group.forEach(c => tk.appendChild(c.cloneNode(true)));
+      stage.style.display = "none";
+      const vw = Math.ceil(periodPx * 2);
+      return { w: vw, h: vh, y: yInt, period: periodPx, words: group.length, tkw: tk.scrollWidth * scale };
+    }
+    bandEl.style.visibility = "hidden";
+    const r = vbEl.getBoundingClientRect();
+    return { x: Math.floor(r.left), y: Math.floor(r.top), w: Math.ceil(r.right) - Math.floor(r.left), h: Math.ceil(r.bottom) - Math.floor(r.top) };
+  };
+
   // Zum Testen im Browser
   window.__qb = { show, refresh, get data() { return data; }, get list() { return list; }, pause: () => { paused = true; clearTimeout(nextTimer); } };
 
@@ -1577,6 +1622,7 @@
     const startAt = parseInt(params.get("start"), 10);
     idx = (startAt > 0 ? startAt - 1 : 0) - 1;
     keepAwake();
+    if (params.has("bandstrip")) { window.__qbStripReady = true; return; }
     await show(1, true);
     const every = data.settings.refresh * 1000;
     refreshTimer = setTimeout(() => refresh(false), lastFetchOk ? every : 5000);

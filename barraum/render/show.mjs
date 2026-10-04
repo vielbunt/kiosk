@@ -136,6 +136,34 @@ try {
     }
     void inCut;
 
+    // Laufband als exakte Streifen holen. Aufgenommen laeuft es mit unregelmaessigen Abstaenden (Zeitstempel der Bilder),
+    // das zeigt sich als leichtes Ruckeln. Deshalb legt ffmpeg das Band spaeter selbst darueber, mit ganzzahligen Pixeln pro Bild.
+    const stripUrl = `http://127.0.0.1:${HTTP_PORT}/queerbar-kiosk.src.html?render=1&bandstrip=1`;
+    const loadStrip = async () => {
+        await cdp('Page.navigate', { url: stripUrl });
+        for (let i = 0; i < 150 && !(await js('!!window.__qbStripReady').catch(() => false)); i++) await sleep(200);
+        await sleep(500);
+    };
+    const shot = async (clip) => Buffer.from((await cdp('Page.captureScreenshot', { format: 'png', clip: { ...clip, scale: 1 }, fromSurface: true })).result.data, 'base64');
+    await loadStrip();
+    // Periode des Bands: ganzzahlig und so, dass bei 2 Pixeln pro Bild genau zwei Perioden in die Schleife passen
+    const NF = Math.round(L * FPS);
+    const P0 = NF;
+    const trk = await js(`window.__qbStrip('track', ${P0})`);
+    await cdp('Emulation.setDeviceMetricsOverride', { width: trk.w, height: trk.h, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    const trackPng = join(tmp, 'track.png');
+    writeFileSync(trackPng, await shot({ x: 0, y: 0, width: trk.w, height: trk.h }));
+    await cdp('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
+    await loadStrip();
+    await cdp('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } });
+    const vb = await js("window.__qbStrip('vb')");
+    await sleep(300);
+    const vbPng = join(tmp, 'vb.png');
+    writeFileSync(vbPng, await shot({ x: vb.x, y: vb.y, width: vb.w, height: vb.h }));
+    const dxf = 2;
+    console.log(`Laufband: ${P0} px Periode, ${trk.words} Woerter, 2 px pro Bild`);
+
     // Bilder -> MP4
     const useFrames = frames.filter(f => f.ts >= tStart - 0.2 && f.ts <= tEnd);
     let startIdx = 0;
@@ -151,13 +179,17 @@ try {
     writeFileSync(join(tmp, 'list.txt'), list);
     mkdirSync(OUT, { recursive: true });
     const mp4 = join(OUT, 'show.mp4');
+    const graph = `[0:v]fps=${FPS},scale=${W}:${H}:flags=lanczos,format=rgb24[a];` +
+        `[1:v]format=rgb24[t];[a][t]overlay=x='-mod(n*${dxf},${P0})':y=${trk.y}:eval=frame:shortest=1[b];` +
+        `[b][2:v]overlay=x=${vb.x}:y=${vb.y}:format=auto,format=yuv420p[o]`;
     const r = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', join(tmp, 'list.txt'),
-        '-t', L.toFixed(3), '-vf', `fps=${FPS},scale=${W}:${H}:flags=lanczos,format=yuv420p`, '-c:v', 'libx264', '-preset', 'slow',
+        '-loop', '1', '-framerate', String(FPS), '-i', trackPng, '-i', vbPng,
+        '-filter_complex', graph, '-map', '[o]', '-frames:v', String(NF), '-r', String(FPS),
+        '-c:v', 'libx264', '-preset', 'slow',
         // Baseline ohne B-Bilder und CABAC: der Pi Zero dekodiert in Software, das ist so am billigsten
         '-tune', 'fastdecode', '-bf', '0', '-refs', '1', '-crf', '20', '-maxrate', '4M', '-bufsize', '8M', '-profile:v', 'baseline', '-level', '3.2', '-movflags', '+faststart', mp4], { stdio: 'inherit' });
     if (r.status !== 0) throw new Error('ffmpeg ist fehlgeschlagen');
 
-    // Wie gleichmaessig kam die Aufnahme? Das Laufband bewegt sich nur dann ruhig, wenn die Bildabstaende klein bleiben.
     const gaps = cut.slice(1).filter((f, i) => f.ts - cut[i].ts > 0.034).length;
     const info = { w: W, h: H, duration: +L.toFixed(3), built: new Date().toISOString(), tag: tag || null, slides };
     writeFileSync(join(OUT, 'show.js'), 'window.BK_SHOW=' + JSON.stringify(info) + ';\n');
