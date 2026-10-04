@@ -30,3 +30,10 @@ Cache 30 Minuten, `?nocache` holt sofort neu. Ein ungecachter Aufruf braucht bei
 
 `/sheet/<gid>` liefert einen Tab des Google Sheets Barraum-Kiosk als CSV mit CORS (nur Tabs 0 bis 7, Cache 15 Sekunden).
 Grund: Googles Export antwortet Seiten von `file://` (Pi im Barraum) ohne CORS-Header, `fetch` scheitert dort.
+
+## Google-Slides-Präsentation für den Barraum-Pi
+
+`/slides/<präsentations-id>` liefert die Folien einer Google-Slides-Präsentation als JSON (`{title, slides: [{w, h, url}]}`),
+in der Reihenfolge der Präsentation. Die Bildadresse nimmt `w` und `h` (bis mindestens 1920×1080). Die Präsentation
+muss für "Jeder mit dem Link" lesbar sein. Cache 60 Sekunden. Gelesen wird die Präsentationsansicht
+(`/htmlpresent`), deren Aufbau Google jederzeit ändern kann: Dann liefert der Worker "Keine Folien gefunden".

@@ -9,7 +9,7 @@
     const GID = { einstellungen: 3, event: 5, ablauf: 6, karte: 7, qslides: 0, qdrinks: 1, qsongs: 2 };
     // Worker mit CORS, siehe worker/worker.js (Googles Export geht von file:// aus nicht)
     const PROXY = 'https://shy-recipe-d443.me-02a.workers.dev/sheet/';
-    const MODES = ['standard', 'queerbar', 'event', '7-jahre-queerbar'];
+    const MODES = ['standard', 'queerbar', 'event', '7-jahre-queerbar', 'praesentation'];
 
     function parseCSV(text) {
         const rows = [];
@@ -79,6 +79,9 @@
             dauerPics: parseNum(kvGet(kv, 'dauer sharepics')) || 20,
             dauerTermine: parseNum(kvGet(kv, 'dauer termine')) || 30,
             dauerKarte: parseNum(kvGet(kv, 'dauer getränkekarte', 'dauer getraenkekarte')) || 20,
+            // Modus praesentation: Google-Slides-Link und Dauer je Folie
+            praesLink: kvGet(kv, 'präsentation (link)', 'praesentation (link)', 'präsentation', 'praesentation'),
+            praesDauer: parseNum(kvGet(kv, 'dauer präsentation', 'dauer praesentation')) || 15,
             // Queerbar-Kiosk
             band: ['songs', 'text', 'aus'].includes((kv['laufband'] || '').toLowerCase()) ? kv['laufband'].toLowerCase() : 'songs',
             bandText: kvGet(kv, 'laufband-text', 'laufbandtext'),

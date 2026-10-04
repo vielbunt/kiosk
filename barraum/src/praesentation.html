@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vielbunt Barraum-Kiosk Praesentation</title>
+<!--CSS-->
+</head>
+<body class="dark">
+<div id="stage"><div class="msg">Lade Präsentation...</div></div>
+<script src="clips/manifest.js"></script>
+<!--SHEET-->
+<!--LIB-->
+<script>
+// Modus praesentation: zeigt die Folien einer Google-Slides-Praesentation, Link und Dauer stehen im Sheet (Einstellungen).
+// Die Folien kommen als Bilder in Bildschirmgroesse, passend eingepasst (nichts wird abgeschnitten, bei anderem
+// Seitenverhaeltnis bleiben schwarze Raender). Der Worker liefert die Folienliste, die Bilder holt der Pi direkt bei Google.
+(() => {
+    const S = BK.S;
+    const MODE = 'praesentation';
+    const player = BK.player(document.getElementById('stage'));
+    const REFRESH_MS = 5 * 60 * 1000;
+    let set = S.settings(''), deck = null, deckId = '', loading = false;
+
+    // ID aus dem Link; veroeffentlichte Links (/d/e/...) gehen nicht, nur die normale Freigabe
+    function idOf(link) {
+        const m = String(link || '').match(/\/presentation\/d\/([\w-]{20,})/);
+        return m && !/\/presentation\/d\/e\//.test(link) ? m[1] : '';
+    }
+    const note = (a, b) => [{ ph: true, dur: 30000, node: () => BK.msg(a, b) }];
+
+    // Bild in Bildschirmgroesse anfordern: so gross wie moeglich, ohne dass etwas abgeschnitten wird
+    function fitUrl(f) {
+        const k = Math.min(innerWidth / f.w, innerHeight / f.h);
+        const w = Math.max(16, Math.round(f.w * k)), h = Math.max(16, Math.round(f.h * k));
+        return f.url.replace(/([?&])w=\d+/, '$1w=' + w).replace(/([?&])h=\d+/, '$1h=' + h);
+    }
+
+    function build() {
+        const id = idOf(set.praesLink);
+        if (!set.praesLink) { player.setList(note('Noch keine Präsentation eingetragen.', 'Im Sheet, Tab Einstellungen, Zeile Präsentation (Link)')); return; }
+        if (!id) { player.setList(note('Der Link passt nicht.', 'Bitte den Teilen-Link der Google-Präsentation eintragen (…/presentation/d/…)')); return; }
+        if (!deck || deckId !== id) { player.setList(note('Lade Präsentation...')); return; }
+        const dur = set.praesDauer * 1000;
+        const items = deck.slides.map(f => {
+            const url = fitUrl(f);
+            return { dur, pre: [url], node: () => BK.pics([url]) };
+        });
+        player.setList(items);
+    }
+
+    async function load() {
+        const id = idOf(set.praesLink);
+        if (!id || loading) return;
+        loading = true;
+        try {
+            const res = await BK.fetchWithTimeout(S.PROXY.replace('/sheet/', '/slides/') + id, 20000);
+            const d = await res.json();
+            if (!d.slides || !d.slides.length) throw new Error('keine Folien');
+            deck = d; deckId = id;
+            try { localStorage.setItem('bk:deck:' + id, JSON.stringify(d)); } catch (e) { /* egal */ }
+            build();
+        } catch (e) {
+            console.warn('Praesentation:', e.message);
+            if (deckId !== id) {
+                // letzter bekannter Stand, sonst Hinweis
+                try { const c = JSON.parse(localStorage.getItem('bk:deck:' + id)); if (c) { deck = c; deckId = id; build(); } } catch (e2) { /* weiter */ }
+                if (deckId !== id) player.setList(note('Präsentation nicht erreichbar.', 'Ist sie für „Jeder mit dem Link“ freigegeben? Neuer Versuch in einer Minute.'));
+                setTimeout(() => { loading = false; load(); }, 60000);
+                return;
+            }
+        } finally {
+            if (loading) loading = false;
+        }
+    }
+
+    BK.watchMode(MODE, s => {
+        const changed = s.praesLink !== set.praesLink;
+        set = s;
+        build();
+        if (changed || !deck) load();
+    });
+    // Folien aendern sich im Google-Dokument: regelmaessig neu holen (neue Bild-Adressen nehmen neue Folien mit)
+    setInterval(load, REFRESH_MS);
+    load();
+})();
+</script>
+</body>
+</html>

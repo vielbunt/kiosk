@@ -16,6 +16,7 @@ von selbst, ohne Neustart. **Standard ist `standard`.**
 | `standard` | `standard.html` | Offener Treff: Sharepics, Terminübersicht, vorgerenderte Clips. Optional die Getränkekarte mit Treffpreisen (Einstellung "Getränkekarte Standard", aus). Keine Verweise auf Alkohol, Queerbar-Beiträge bleiben draußen. |
 | `queerbar` | `queerbar.html` | Queerbar-Abend: Slides aus dem Tab "Queerbar Slides". Claim und Motion sind vorgerendert, Karte, Acts, Info und Bild stehen als ruhiges Bild. |
 | `7-jahre-queerbar` | `7-jahre-queerbar.html` | Sonderkiosk fürs Queerbar-Jubiläum: die ganze Queerbar-Show (alle aktiven Slides mit Animationen, Übergängen und Laufband) ist ein einziges vorgerendertes Video in Schleife. Nur Preise und Ausverkauft kommen live aus dem Sheet als Overlay. Der Modus `queerbar` bleibt daneben unverändert bestehen. |
+| `praesentation` | `praesentation.html` | Folien einer Google-Slides-Präsentation, eine nach der anderen. Link und Dauer im Tab Einstellungen (Präsentation (Link), Dauer Präsentation). Nichts wird abgeschnitten (eingepasst, schwarze Ränder bei anderem Format). |
 | `event` | `event.html` | "Herzlich willkommen zur Veranstaltung ...", Sharepics des Tages, Termine, ruhige Clips, optional Getränkekarte mit Eventpreisen. Ablauf im Tab "Event-Ablauf". |
 
 Tabs im Sheet: Einstellungen, Event, Event-Ablauf, Getränkekarte (Barraum) und Queerbar Slides / Getränke / Songs
@@ -125,6 +126,14 @@ und `show.js` mit Zeitleiste und der gemessenen Lage der Preise.
   und Aktiv (Zeile wird abgedeckt). Typ Special wird nicht live gelegt (Preise sind dort im Video).
 - Kodiert wird als H.264 Baseline ohne B-Bilder (`-tune fastdecode`): der Pi dekodiert in Software, auf dem Pi
   rund 2 % verworfene Bilder. Ein High-Profile-Video lief deutlich schlechter.
+
+## praesentation (Google Slides)
+
+Die Präsentation muss für „Jeder mit dem Link“ lesbar sein (Teilen-Link, nicht „Im Web veröffentlichen“). Der Kalender-Worker
+(`worker/`, Route `/slides/<id>`) liest die Präsentationsansicht und liefert die Folien in Reihenfolge als JSON mit Bildadresse
+und Größe. Die Bildadresse nimmt `w` und `h`, die Seite setzt sie auf die Bildschirmgröße (Seitenverhältnis der Folie bleibt),
+und der Pi holt die Bilder direkt bei Google. Neu laden alle 5 Minuten. Es läuft kein Rendern auf dem Mac und kein Upload.
+Google kann den Aufbau der Präsentationsansicht ändern, dann meldet der Worker „Keine Folien gefunden“ (Seite zeigt den letzten Stand).
 
 ## Auf dem Pi
 

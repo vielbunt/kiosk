@@ -31,8 +31,43 @@ async function sheetTab(gid) {
   });
 }
 
+// Google-Slides-Praesentation (Modus praesentation am Barraum-Pi): Folienliste mit Bild-URLs als JSON.
+// Die Praesentation muss fuer "Jeder mit dem Link" lesbar sein. Quelle ist die Praesentationsansicht
+// (htmlpresent), die Folien in der richtigen Reihenfolge samt Groesse und Bildadresse enthaelt. Die Bildadresse
+// nimmt Breite und Hoehe als Parameter (w, h), der Kiosk setzt sie auf die Bildschirmgroesse.
+const FOLIEN_CACHE_SEKUNDEN = 60;
+
+async function folien(id) {
+  if (!/^[\w-]{20,80}$/.test(id)) return fehler('Ungueltige Praesentations-ID');
+  const upstream = await fetch(`https://docs.google.com/presentation/d/${id}/htmlpresent`, {
+    headers: { 'Accept-Language': 'de' },
+    cf: { cacheTtl: FOLIEN_CACHE_SEKUNDEN, cacheEverything: true },
+  });
+  if (!upstream.ok) return fehler(upstream.status === 401 || upstream.status === 403 || upstream.status === 404
+    ? 'Praesentation nicht freigegeben (Teilen: Jeder mit dem Link)' : `Google antwortet ${upstream.status}`);
+  const html = await upstream.text();
+  const slides = [];
+  const re = /width:(\d+)px;\s*height:(\d+)px;background-image: url\((https:\/\/docs\.google\.com\/presentation\/d\/[^)]*viewpage\?[^)]*)\)/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const url = m[3].replace(/&amp;/g, '&');
+    slides.push({ w: +m[1], h: +m[2], url });
+  }
+  if (!slides.length) return fehler('Keine Folien gefunden (Link richtig? Praesentation freigegeben?)');
+  const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || '';
+  return new Response(JSON.stringify({ title: title.replace(/&amp;/g, '&'), slides }), {
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': `public, max-age=${FOLIEN_CACHE_SEKUNDEN}`,
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
+    const folienPfad = new URL(request.url).pathname.match(/^\/slides\/([\w-]+)$/);
+    if (folienPfad) return folien(folienPfad[1]);
     const pfad = new URL(request.url).pathname.match(/^\/sheet\/(\d+)$/);
     if (pfad) return sheetTab(pfad[1]);
     const nocache = new URL(request.url).searchParams.has('nocache');
