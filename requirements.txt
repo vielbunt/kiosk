@@ -8,6 +8,6 @@ google-auth>=2.0
 google-auth-httplib2>=0.1
 tzdata
 # Das Cloud-Image bringt ein kaputtes cryptography aus apt mit (ohne cffi), darum eigene Versionen.
-# Dort vorher: pip install --ignore-installed "cryptography>=43.0" "cffi>=1.16"
+# Dort richtet python3 cloud/einrichten.py alles ein (prüft und repariert, nie nacktes pip benutzen).
 cryptography>=43.0
 cffi>=1.16
