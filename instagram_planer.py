@@ -124,13 +124,31 @@ def _sauber(text) -> str:
     return re.sub(r"((?:access|input)_token=)[^&\s'\"]+", r"\1***", str(text))
 
 
+class MetaVoruebergehend(RuntimeError):
+    """Meta gerade nicht erreichbar (Netz, Timeout, 5xx). Der nächste Start versucht es wieder."""
+
+
 def seiten_token() -> str:
-    r = requests.get(f"{GRAPH}/me/accounts", headers=_auth(einstellung("META_ACCESS_TOKEN")), timeout=30)
-    r.raise_for_status()
-    for seite in r.json().get("data", []):
-        if seite.get("id") == einstellung("FACEBOOK_PAGE_ID"):
-            return seite["access_token"]
-    sys.exit("Facebook-Seite nicht in /me/accounts gefunden, Token prüfen.")
+    # nur lesend, darf also einmal wiederholt werden
+    for versuch in (1, 2):
+        try:
+            r = requests.get(f"{GRAPH}/me/accounts", headers=_auth(einstellung("META_ACCESS_TOKEN")), timeout=30)
+        except (requests.ConnectionError, requests.Timeout) as fehler:
+            if versuch == 2:
+                raise MetaVoruebergehend(_sauber(fehler)) from None
+            time.sleep(20)
+            continue
+        if r.status_code >= 500:
+            if versuch == 2:
+                raise MetaVoruebergehend(f"Meta antwortet {r.status_code}")
+            time.sleep(20)
+            continue
+        if not r.ok:
+            raise RuntimeError(f"Meta lehnt den Token ab ({r.status_code}): {_sauber(r.text)[:200]}")
+        for seite in r.json().get("data", []):
+            if seite.get("id") == einstellung("FACEBOOK_PAGE_ID"):
+                return seite["access_token"]
+        raise RuntimeError("Facebook-Seite nicht in /me/accounts gefunden")
 
 
 def _warten(container_id: str, token: str) -> None:
@@ -172,8 +190,7 @@ def alt_texte(titel: str, anzahl: int) -> list[str]:
         for i in range(2, anzahl + 1)]
 
 
-def veroeffentlichen(bilder: list[str], text: str, token: str, titel: str = "") -> str:
-    konto = einstellung("INSTAGRAM_ACCOUNT_ID")
+def veroeffentlichen(bilder: list[str], text: str, token: str, konto: str, titel: str = "") -> str:
     alts = alt_texte(titel, len(bilder))
     if len(bilder) == 1:
         container = _bild_container(konto, token, alts[0], image_url=bilder[0], caption=text)
@@ -191,7 +208,7 @@ def veroeffentlichen(bilder: list[str], text: str, token: str, titel: str = "") 
 # ── Ablauf ─────────────────────────────────────────────────────────────────
 
 def lebenszeichen_pruefen(sh, sid, jetzt) -> None:
-    """Warnt einmal am Tag, wenn die lokale Routine vielbunt-daily länger als 26 Stunden nicht lief."""
+    """Warnt einmal am Tag, wenn die Cloud-Routine vielbunt daily länger als 26 Stunden nicht lief."""
     try:
         werte = sh.values().get(spreadsheetId=sid, range="'Vorbereitung'!B6:C6").execute().get("values", [[]])[0]
     except Exception:
@@ -203,7 +220,7 @@ def lebenszeichen_pruefen(sh, sid, jetzt) -> None:
     except ValueError:
         return
     if seit > timedelta(hours=26) and gemeldet != f"{jetzt:%Y-%m-%d}":
-        print(f"⚠️  vielbunt-daily ist seit {zuletzt} nicht gelaufen (Mac aus oder Claude-App zu?). "
+        print(f"⚠️  vielbunt-daily ist seit {zuletzt} nicht gelaufen (Cloud-Routine vielbunt daily nicht gestartet oder abgebrochen? Run-Log unter claude.ai/code/routines prüfen). "
               "Bis zum nächsten Lauf werden keine Plakate gebaut und keine neuen Beiträge eingeplant.")
         sh.values().update(spreadsheetId=sid, range="'Vorbereitung'!C6", valueInputOption="RAW",
                            body={"values": [[f"{jetzt:%Y-%m-%d}"]]}).execute()
@@ -214,7 +231,7 @@ def main():
     jetzt = datetime.now(BERLIN)
     sid = einstellung("GOOGLE_SHEETS_SPREADSHEET_ID")
     sh = sheets()
-    token = None
+    token = konto = None
     faellig = 0
 
     for nr, e, kopf in lade_protokoll(sh, sid):
@@ -250,13 +267,27 @@ def main():
             print("    [DRY] würde jetzt posten")
             continue
 
+        # Zugang holen, bevor die Zeile gesperrt wird: scheitert das, bleibt sie frei und der
+        # nächste Start im Zeitfenster versucht es nochmal (bis 3 h nach der geplanten Zeit)
+        if token is None:
+            try:
+                token, konto = seiten_token(), einstellung("INSTAGRAM_ACCOUNT_ID")
+            except MetaVoruebergehend as fehler:
+                print(f"    ✗ Meta gerade nicht erreichbar ({fehler}), nichts gepostet. Der nächste Start versucht es wieder.")
+                break
+            except (Exception, SystemExit) as fehler:
+                print(f"    ✗ Meta-Zugang nicht nutzbar ({_sauber(fehler)}), nichts gepostet. "
+                      "META_ACCESS_TOKEN und Seitenzuordnung prüfen, der nächste Start versucht es wieder.")
+                break
+
         schreibe(sh, sid, kopf, nr, "Instagram-ID", f"läuft seit {jetzt:%Y-%m-%d %H:%M}")
-        token = token or seiten_token()
         try:
-            ig_id = veroeffentlichen(bilder, e.get("Text", ""), token, e.get("Titel", ""))
+            ig_id = veroeffentlichen(bilder, e.get("Text", ""), token, konto, e.get("Titel", ""))
         except Exception as fehler:
-            schreibe(sh, sid, kopf, nr, "Instagram-ID", f"Fehler {jetzt:%Y-%m-%d %H:%M}: {_sauber(fehler)[:200]}")
-            print(f"    ✗ {_sauber(fehler)}")
+            # gleich als gemeldet markieren, sonst meldet der nächste Start dieselbe Zeile nochmal
+            schreibe(sh, sid, kopf, nr, "Instagram-ID", f"Fehler {jetzt:%Y-%m-%d %H:%M}: {_sauber(fehler)[:200]} [gemeldet]")
+            print(f"    ✗ {_sauber(fehler)}. Bitte auf Instagram nachsehen; zum Wiederholen die Zelle "
+                  "Instagram-ID leeren und Geplant für/Uhrzeit neu setzen.")
             continue
         schreibe(sh, sid, kopf, nr, "Instagram-ID", ig_id)
         print(f"    ✓ Instagram-Post {ig_id}")
