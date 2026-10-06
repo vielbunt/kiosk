@@ -35,7 +35,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 BERLIN = ZoneInfo("Europe/Berlin")
-GRAPH = "https://graph.facebook.com/v21.0"
+GRAPH = "https://graph.facebook.com/v25.0"  # gilt laut Meta bis etwa Juli 2028
 TAB = "Automatik"
 PLAN_TAB = "Formularantworten 1"
 SPAETESTENS = timedelta(hours=3)
@@ -73,7 +73,15 @@ def sheets():
     info = json.loads(roh) if roh else json.loads((POSTERGENERATOR / "scheduler" / "service_account.json").read_text())
     creds = service_account.Credentials.from_service_account_info(
         info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-    return build("sheets", "v4", credentials=creds, cache_discovery=False).spreadsheets()
+    from googleapiclient.http import HttpRequest
+
+    class Wiederholend(HttpRequest):  # wie postergenerator/google_dienste.py: 429/5xx bis zu 4 Mal
+        def execute(self, http=None, num_retries=0):
+            if num_retries == 0 and self.methodId != "sheets.spreadsheets.values.append":
+                num_retries = 4  # append nie, sonst droht eine doppelte Zeile
+            return super().execute(http=http, num_retries=num_retries)
+
+    return build("sheets", "v4", credentials=creds, cache_discovery=False, requestBuilder=Wiederholend).spreadsheets()
 
 
 # ── Sheet ──────────────────────────────────────────────────────────────────
@@ -207,23 +215,88 @@ def veroeffentlichen(bilder: list[str], text: str, token: str, konto: str, titel
 
 # ── Ablauf ─────────────────────────────────────────────────────────────────
 
+# Lebenszeichen im Tab Vorbereitung (Zeile 6 daily, 7 AKÖ, 8 Instagram, 9 weekly), gleich wie in
+# postergenerator/redaktionsplan.py. Spalte C merkt sich, an welchem Tag schon gewarnt wurde.
+LEBENSZEICHEN = {
+    6: ("vielbunt daily", timedelta(hours=26),
+        "Bis zum nächsten Lauf werden keine Plakate gebaut und keine neuen Beiträge eingeplant."),
+    7: ("AKÖ Vorbereitung", timedelta(hours=14), "Neue Einsendungen werden so lange nicht vorbereitet."),
+}
+INSTAGRAM_ZEILE = 8
+
+
+def lebenszeichen_schreiben(sh, sid, jetzt) -> None:
+    try:
+        sh.values().update(spreadsheetId=sid, range=f"'Vorbereitung'!A{INSTAGRAM_ZEILE}:B{INSTAGRAM_ZEILE}",
+                           valueInputOption="RAW",
+                           body={"values": [["vielbunt Instagram zuletzt gelaufen", f"{jetzt:%Y-%m-%d %H:%M}"]]}).execute()
+    except Exception as fehler:
+        print(f"(Lebenszeichen nicht geschrieben: {_sauber(fehler)})")
+
+
 def lebenszeichen_pruefen(sh, sid, jetzt) -> None:
-    """Warnt einmal am Tag, wenn die Cloud-Routine vielbunt daily länger als 26 Stunden nicht lief."""
+    """Warnt einmal am Tag je Routine, wenn eine andere Cloud-Routine zu lange nicht lief."""
     try:
-        werte = sh.values().get(spreadsheetId=sid, range="'Vorbereitung'!B6:C6").execute().get("values", [[]])[0]
+        werte = sh.values().get(spreadsheetId=sid, range="'Vorbereitung'!A6:C9").execute().get("values", [])
     except Exception:
-        return  # Tab fehlt: nix zu prüfen
-    zuletzt = werte[0] if werte else ""
-    gemeldet = werte[1] if len(werte) > 1 else ""
+        return  # Tab fehlt oder Sheet hakt: nicht 9x am Tag deswegen pushen
+    for zeile, (name, grenze, folge) in LEBENSZEICHEN.items():
+        z = (werte[zeile - 6] if len(werte) > zeile - 6 else []) + ["", "", ""]
+        zuletzt, gemeldet = z[1], z[2]
+        try:
+            seit = jetzt - datetime.strptime(zuletzt, "%Y-%m-%d %H:%M").replace(tzinfo=BERLIN)
+        except ValueError:
+            continue  # noch nie eingetragen
+        if seit > grenze and gemeldet != f"{jetzt:%Y-%m-%d}":
+            print(f"⚠️  {name} ist seit {zuletzt} nicht gelaufen (Cloud-Routine nicht gestartet oder "
+                  f"abgebrochen? Run-Log unter claude.ai/code/routines prüfen). {folge}")
+            sh.values().update(spreadsheetId=sid, range=f"'Vorbereitung'!C{zeile}", valueInputOption="RAW",
+                               body={"values": [[f"{jetzt:%Y-%m-%d}"]]}).execute()
+
+
+def angehalten(sh, sid, jetzt) -> bool:
+    """Notaus im Tab Vorbereitung (B10). Erinnert höchstens einmal am Tag (Datum in C10)."""
     try:
-        seit = jetzt - datetime.strptime(zuletzt, "%Y-%m-%d %H:%M").replace(tzinfo=BERLIN)
-    except ValueError:
-        return
-    if seit > timedelta(hours=26) and gemeldet != f"{jetzt:%Y-%m-%d}":
-        print(f"⚠️  vielbunt-daily ist seit {zuletzt} nicht gelaufen (Cloud-Routine vielbunt daily nicht gestartet oder abgebrochen? Run-Log unter claude.ai/code/routines prüfen). "
-              "Bis zum nächsten Lauf werden keine Plakate gebaut und keine neuen Beiträge eingeplant.")
-        sh.values().update(spreadsheetId=sid, range="'Vorbereitung'!C6", valueInputOption="RAW",
+        werte = sh.values().get(spreadsheetId=sid, range="'Vorbereitung'!B10:C10",
+                                valueRenderOption="UNFORMATTED_VALUE").execute().get("values", [[]])
+    except Exception:
+        return False
+    z = (werte[0] if werte else []) + [False, ""]
+    if z[0] is not True:
+        return False
+    if z[1] != f"{jetzt:%Y-%m-%d}":
+        print("⚠️  Automatik im Sheet angehalten (Tab Vorbereitung, Zeile 10), Instagram postet nichts. "
+              "Zum Weitermachen das Häkchen entfernen.")
+        sh.values().update(spreadsheetId=sid, range="'Vorbereitung'!C10", valueInputOption="RAW",
                            body={"values": [[f"{jetzt:%Y-%m-%d}"]]}).execute()
+    else:
+        print("Automatik angehalten, nichts gepostet.")
+    return True
+
+
+def wochenschluessel(jetzt) -> str:
+    """Die Wochenübersicht vom Sonntag zeigt die folgende Woche, der Schlüssel ist deren ISO-Woche."""
+    jahr, woche, _ = (jetzt + timedelta(days=1)).isocalendar()
+    return f"{jahr}-W{woche:02d}"
+
+
+def wochenpost_pruefen(sh, sid, jetzt, zeilen) -> None:
+    """Sonntags ab 14 Uhr: einmal melden, wenn vielbunt weekly social heute nichts gepostet hat."""
+    if jetzt.weekday() != 6 or jetzt.hour < 14:
+        return
+    schluessel = wochenschluessel(jetzt)
+    if any(e.get("Art") == "wochenpost" and e.get("Schlüssel") == schluessel for _, e, _ in zeilen):
+        return
+    print(f"⚠️  Wochenübersicht {schluessel} ist heute nicht gepostet worden. Nachholen: im Tab Automatik "
+          f"die Zeile wochenpost {schluessel} löschen, dann lokal python3 weekly_social.py starten.")
+    kopf = sh.values().get(spreadsheetId=sid, range=f"{TAB}!A1:Z1").execute().get("values", [[]])[0]
+    if kopf:
+        werte = {"Art": "wochenpost", "Schlüssel": schluessel, "Titel": f"Wochenübersicht {schluessel}",
+                 "Verarbeitet am": f"{jetzt:%Y-%m-%d %H:%M}", "Facebook-ID": "verpasst [gemeldet]",
+                 "Instagram-ID": "verpasst [gemeldet]"}
+        sh.values().append(spreadsheetId=sid, range=f"{TAB}!A:{_buchstabe(len(kopf) - 1)}",
+                           valueInputOption="RAW", insertDataOption="INSERT_ROWS",
+                           body={"values": [[werte.get(k, "") for k in kopf]]}).execute()
 
 
 def main():
@@ -234,7 +307,11 @@ def main():
     token = konto = None
     faellig = 0
 
-    for nr, e, kopf in lade_protokoll(sh, sid):
+    if not trocken and angehalten(sh, sid, jetzt):
+        lebenszeichen_schreiben(sh, sid, jetzt)
+        return
+    zeilen = list(lade_protokoll(sh, sid))
+    for nr, e, kopf in zeilen:
         ig = e.get("Instagram-ID", "").strip()
         if e.get("Art") != "beitrag" or not e.get("Bilder"):
             continue  # ältere Einträge ohne Bilder hat Jan noch von Hand auf Instagram gebracht
@@ -298,6 +375,8 @@ def main():
 
     if not trocken:
         lebenszeichen_pruefen(sh, sid, jetzt)
+        wochenpost_pruefen(sh, sid, jetzt, zeilen)
+        lebenszeichen_schreiben(sh, sid, jetzt)
     if not faellig:
         print(f"Nichts fällig ({jetzt:%d.%m. %H:%M %Z}).")
 

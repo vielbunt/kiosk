@@ -23,6 +23,7 @@ import subprocess
 from pathlib import Path
 
 import requests
+from datetime import datetime
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 KIOSK_DIR       = Path(__file__).parent
@@ -60,6 +61,9 @@ if not all([META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID]) and "--p
         "als Umgebungsvariablen setzen oder meta_config_template.py → meta_config.py kopieren."
     )
 
+# Meta Graph API: v25.0 gilt laut Meta bis etwa Juli 2028 (v26.0 kam am 29.07.2026)
+GRAPH = "https://graph.facebook.com/v25.0"
+
 # ── Caption ────────────────────────────────────────────────────────────────
 CAPTION = (
     "Was steht demnächst bei vielbunt an? In der Übersicht findet ihr alle Termine "
@@ -74,8 +78,9 @@ CAPTION = (
 def _page_access_token():
     """Exchange the system-user token for a page access token."""
     resp = requests.get(
-        "https://graph.facebook.com/v20.0/me/accounts",
+        f"{GRAPH}/me/accounts",
         headers={"Authorization": f"Bearer {META_ACCESS_TOKEN}"},  # nicht in die URL, sonst landet er in Fehlermeldungen
+        timeout=(10, 30),
     )
     resp.raise_for_status()
     pages = resp.json().get("data", [])
@@ -134,22 +139,26 @@ def step_upload_poster():
         supportsAllDrives=True,
     ).execute()
     print(f"    ✓ Uploaded (Drive id={result['id']})\n")
+    return result["id"]
 
 
 def step_post_facebook():
     print("📘  Posting to Facebook…")
     page_token = _page_access_token()
-    url = f"https://graph.facebook.com/v20.0/{FACEBOOK_PAGE_ID}/photos"
+    url = f"{GRAPH}/{FACEBOOK_PAGE_ID}/photos"
     with open(SOCIALMEDIA_PNG, "rb") as fh:
         resp = requests.post(
             url,
             data={"caption": CAPTION, "access_token": page_token, "published": "true"},
             files={"source": ("socialmedia.png", fh, "image/png")},
+            timeout=(10, 180),
         )
     if not resp.ok:
-        print(f"    ✗ Facebook error {resp.status_code}: {resp.text}")
+        print(f"    ✗ Facebook error {resp.status_code}: {_sauber(resp.text)}")
     resp.raise_for_status()
-    print(f"    ✓ Facebook post created (id={resp.json().get('id')})\n")
+    fb_id = resp.json().get("id")
+    print(f"    ✓ Facebook post created (id={fb_id})\n")
+    return fb_id
 
 
 def step_post_instagram():
@@ -186,8 +195,9 @@ def step_post_instagram():
         page_token = _page_access_token()
         # Create media container
         container = requests.post(
-            f"https://graph.facebook.com/v20.0/{INSTAGRAM_ACCOUNT_ID}/media",
+            f"{GRAPH}/{INSTAGRAM_ACCOUNT_ID}/media",
             data={"image_url": image_url, "caption": CAPTION, "access_token": page_token},
+            timeout=(10, 180),
         )
         if not container.ok:
             print(f"    ✗ Instagram container error {container.status_code}: {container.text}")
@@ -197,9 +207,10 @@ def step_post_instagram():
         # Wait for Instagram to finish processing the image before publishing
         for attempt in range(24):  # up to ~2 minutes
             status_r = requests.get(
-                f"https://graph.facebook.com/v20.0/{creation_id}",
+                f"{GRAPH}/{creation_id}",
                 params={"fields": "status_code"},
                 headers={"Authorization": f"Bearer {page_token}"},
+                timeout=(10, 30),
             )
             status_r.raise_for_status()
             status_code = status_r.json().get("status_code")
@@ -213,13 +224,16 @@ def step_post_instagram():
 
         # Publish
         publish = requests.post(
-            f"https://graph.facebook.com/v20.0/{INSTAGRAM_ACCOUNT_ID}/media_publish",
+            f"{GRAPH}/{INSTAGRAM_ACCOUNT_ID}/media_publish",
             data={"creation_id": creation_id, "access_token": page_token},
+            timeout=(10, 180),
         )
         if not publish.ok:
             print(f"    ✗ Instagram publish error {publish.status_code}: {publish.text}")
         publish.raise_for_status()
-        print(f"    ✓ Instagram post created (id={publish.json().get('id')})\n")
+        ig_id = publish.json().get("id")
+        print(f"    ✓ Instagram post created (id={ig_id})\n")
+        return ig_id
 
     finally:
         # Temp-Datei immer aufräumen. In geteilten Ablagen darf nicht jede Rolle endgültig
@@ -317,7 +331,7 @@ def meta_token_pruefen(tage: int = 14) -> None:
     """Warnt, wenn der Meta-Token bald abläuft (steht dann im Bericht der Routine)."""
     from datetime import datetime, timedelta, timezone
     try:
-        daten = requests.get("https://graph.facebook.com/v20.0/debug_token", params={
+        daten = requests.get(f"{GRAPH}/debug_token", params={
             "input_token": META_ACCESS_TOKEN}, headers={"Authorization": f"Bearer {META_ACCESS_TOKEN}"},
             timeout=30).json().get("data", {})
     except Exception as e:
@@ -333,20 +347,110 @@ def meta_token_pruefen(tage: int = 14) -> None:
             print(f"⚠️  META-TOKEN {was} am {datetime.fromtimestamp(ts):%d.%m.%Y}, rechtzeitig erneuern.")
 
 
+# ── Wochensperre ───────────────────────────────────────────────────────────
+# Im Tab "Automatik" des Redaktionsplans steht pro Woche eine Zeile Art "wochenpost" (instagram_planer.py
+# überspringt solche Zeilen). Gibt es sie schon, postet ein zweiter Start nichts, egal wer ihn auslöst
+# (Nachholfenster der Cloud-Routine, versehentlich gestartete lokale Routine, Handlauf).
+
+def _plan():
+    import instagram_planer as ip
+    return ip, ip.sheets(), ip.einstellung("GOOGLE_SHEETS_SPREADSHEET_ID")
+
+
+def sperre_pruefen(ip, sh, sid, schluessel):
+    """Exit 3, wenn diese Woche schon (oder halb) gepostet wurde, Exit 1 wenn die Sperre nicht lesbar ist."""
+    try:
+        zeilen = list(ip.lade_protokoll(sh, sid))
+    except Exception as e:
+        print(f"❌  Wochensperre nicht lesbar ({_sauber(e)}), aus Sicherheit nichts gepostet.")
+        sys.exit(1)
+    for nr, e, kopf in zeilen:
+        if e.get("Art") != "wochenpost" or e.get("Schlüssel") != schluessel:
+            continue
+        zustand = f"Facebook {e.get('Facebook-ID') or '?'}, Instagram {e.get('Instagram-ID') or '?'}"
+        offen = [sp for sp in ("Facebook-ID", "Instagram-ID")
+                 if e.get(sp, "").startswith(("läuft", "Fehler", "wartet")) and "[gemeldet]" not in e.get(sp, "")]
+        if offen:
+            print(f"⚠️  Wochenpost {schluessel} hängt ({zustand}). Bitte auf Facebook und Instagram nachsehen, "
+                  "zum Nachposten die Zeile im Tab Automatik löschen.")
+            for sp in offen:
+                ip.schreibe(sh, sid, kopf, nr, sp, f"{e[sp]} [gemeldet]")
+        else:
+            print(f"Wochenpost {schluessel} schon erledigt ({zustand}), nichts zu tun.")
+        sys.exit(3)
+
+
+def sperre_setzen(ip, sh, sid, schluessel, drive_id):
+    jetzt = datetime.now(ip.BERLIN)
+    kopf = sh.values().get(spreadsheetId=sid, range=f"{ip.TAB}!A1:Z1").execute()["values"][0]
+    werte = {"Art": "wochenpost", "Schlüssel": schluessel, "Titel": f"Wochenübersicht {schluessel}",
+             "Verarbeitet am": f"{jetzt:%Y-%m-%d %H:%M}", "Drive-Datei": drive_id or "",
+             "Facebook-ID": f"läuft seit {jetzt:%Y-%m-%d %H:%M}", "Instagram-ID": "wartet"}
+    sh.values().append(spreadsheetId=sid, range=f"{ip.TAB}!A:{ip._buchstabe(len(kopf) - 1)}",
+                       valueInputOption="RAW", insertDataOption="INSERT_ROWS",
+                       body={"values": [[werte.get(k, "") for k in kopf]]}).execute()
+    for nr, e, kopf in ip.lade_protokoll(sh, sid):
+        if e.get("Art") == "wochenpost" and e.get("Schlüssel") == schluessel:
+            return lambda spalte, wert: ip.schreibe(sh, sid, kopf, nr, spalte, wert)
+    raise RuntimeError("Sperrzeile nach dem Anlegen nicht gefunden")
+
+
+def _schritt(name, funktion, *args):
+    """Führt einen Schritt aus, ohne dass sein Fehler die anderen verhindert. Liefert (ok, ergebnis)."""
+    try:
+        return True, funktion(*args)
+    except KeyboardInterrupt:
+        raise
+    except requests.ReadTimeout:
+        print(f"    ✗ {name} UNKLAR: Meta hat nicht rechtzeitig geantwortet, der Beitrag ist eventuell trotzdem "
+              "online. Erst auf der Seite nachsehen, dann gegebenenfalls nachholen.")
+        return False, "UNKLAR (Zeitüberschreitung)"
+    except BaseException as e:  # auch sys.exit aus den Schritten
+        print(f"    ✗ {name} fehlgeschlagen: {_sauber(e)}")
+        return False, f"Fehler: {_sauber(e)[:150]}"
+
+
 def main():
     if META_ACCESS_TOKEN:
         meta_token_pruefen()
     if "--probe" in sys.argv:
         probe()
         return
-    print("🚀  vielbunt weekly social media routine\n")
-    step_screenshots()
-    step_upload_poster()
     if "--nur-poster" in sys.argv:
+        step_screenshots()
+        step_upload_poster()
         print("✅  Poster done, social media skipped (--nur-poster)")
         return
-    step_post_facebook()
-    step_post_instagram()
+
+    print("🚀  vielbunt weekly social media routine\n")
+    ip, sh, sid = _plan()
+    if ip.angehalten(sh, sid, datetime.now(ip.BERLIN)):
+        step_screenshots()
+        step_upload_poster()
+        print("✅  Nur das Plakat gebaut, nichts gepostet (Automatik angehalten).")
+        return
+    schluessel = ip.wochenschluessel(datetime.now(ip.BERLIN))
+    sperre_pruefen(ip, sh, sid, schluessel)
+    try:
+        step_screenshots()  # ohne Bilder geht nichts, Fehler bricht ab
+        ok_poster, drive_id = _schritt("Poster-Upload", step_upload_poster)
+        _page_access_token()  # Meta-Zugang prüfen, bevor die Sperre gesetzt wird
+        setze = sperre_setzen(ip, sh, sid, schluessel, drive_id if ok_poster else "")
+        ok_fb, fb = _schritt("Facebook", step_post_facebook)
+        setze("Facebook-ID", fb if ok_fb else f"{fb} [gemeldet]")
+        setze("Instagram-ID", f"läuft seit {datetime.now(ip.BERLIN):%Y-%m-%d %H:%M}")
+        ok_ig, ig = _schritt("Instagram", step_post_instagram)
+        setze("Instagram-ID", ig if ok_ig else f"{ig} [gemeldet]")
+    finally:
+        try:
+            sh.values().update(spreadsheetId=sid, range="'Vorbereitung'!A9:B9", valueInputOption="RAW",
+                               body={"values": [["vielbunt weekly social zuletzt gelaufen",
+                                                 f"{datetime.now(ip.BERLIN):%Y-%m-%d %H:%M}"]]}).execute()
+        except Exception as e:
+            print(f"(Lebenszeichen nicht geschrieben: {_sauber(e)})")
+    print(f"\n{'✓' if ok_poster else '✗'} Poster  {'✓' if ok_fb else '✗'} Facebook  {'✓' if ok_ig else '✗'} Instagram")
+    if not (ok_poster and ok_fb and ok_ig):
+        sys.exit(1)
     print("✅  All done!")
 
 

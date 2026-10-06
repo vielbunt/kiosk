@@ -23,11 +23,15 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Paketname (klein) -> Modul, das importierbar sein muss. Sonst gilt der Paketname mit _ statt -.
+# Paketname (klein) -> Modul, das importierbar sein muss. Für alle anderen wird der Paketname mit _
+# statt - probiert und, wenn es so kein Modul gibt, das echte Modul über die Paket-Metadaten gesucht
+# (python-dateutil heißt z. B. dateutil). Hier muss also nur rein, was besonders gründlich geprüft
+# werden soll.
 MODULE = {
     "google-api-python-client": "googleapiclient.discovery",
     "google-auth": "google.oauth2.service_account",
@@ -69,14 +73,47 @@ def pakete_aus(datei, gesehen=None):
     return pakete
 
 
+NETZFEHLER = ("Retrying (Retry(", "ConnectTimeoutError", "ReadTimeoutError", "NewConnectionError",
+              "ProxyError", "Temporary failure in name resolution", "Network is unreachable")
+
+# Läuft im frischen Prozess: importiert ein Paket, notfalls über die Metadaten (anderer Modulname)
+PAKETTEST = """
+import importlib, importlib.metadata as md, re
+def _norm(x):
+    return re.sub(r"[-_.]+", "-", x).lower()
+def paket(name, geraten, fest):
+    try:
+        importlib.import_module(geraten)
+        return
+    except ModuleNotFoundError as e:
+        if fest or e.name not in (geraten, geraten.split(".")[0]):
+            raise
+    try:
+        md.distribution(name)
+    except md.PackageNotFoundError:
+        raise ModuleNotFoundError(f"No module named {geraten!r} (Paket {name} nicht installiert)") from None
+    module = [m for m, ds in md.packages_distributions().items()
+              if _norm(name) in {_norm(d) for d in ds} and not m.startswith("_")]
+    if not module:
+        raise ModuleNotFoundError(f"No module named {geraten!r} (Paket {name} ohne importierbares Modul)")
+    for m in module:
+        importlib.import_module(m)
+"""
+
+
+def name_von(paket):
+    return re.split(r"[<>=!~\[; ]", paket, 1)[0].strip().lower()
+
+
 def modul(paket):
-    name = re.split(r"[<>=!~\[; ]", paket, 1)[0].strip().lower()
+    name = name_von(paket)
     return MODULE.get(name, name.replace("-", "_"))
 
 
-def pruefen(module, signieren):
+def pruefen(pakete, signieren):
     """Liefert None, wenn alles geht, sonst die erste Fehlerzeile."""
-    code = "".join(f"import {m}\n" for m in module)
+    code = PAKETTEST + "".join(
+        f"paket({name_von(p)!r}, {modul(p)!r}, {name_von(p) in MODULE})\n" for p in pakete)
     if signieren:
         code += SIGNIERTEST
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
@@ -87,15 +124,27 @@ def pruefen(module, signieren):
     return (fehler or zeilen or ["unbekannter Fehler"])[-1].strip()
 
 
+class PaketquelleWeg(Exception):
+    pass
+
+
 def pip(*args):
     befehl = [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *args]
-    r = subprocess.run(befehl, capture_output=True, text=True)
-    if r.returncode != 0 and "externally-managed" in r.stderr:
-        r = subprocess.run(befehl + ["--break-system-packages"], capture_output=True, text=True)
-    if r.returncode != 0:
+    for versuch in (1, 2):
+        r = subprocess.run(befehl, capture_output=True, text=True)
+        if r.returncode != 0 and "externally-managed" in r.stderr:
+            befehl.append("--break-system-packages")
+            r = subprocess.run(befehl, capture_output=True, text=True)
+        if r.returncode == 0:
+            return True
         letzte = (r.stderr.strip().splitlines() or ["?"])[-1]
-        print(f"pip-Fehler: {letzte}")
-    return r.returncode == 0
+        if not any(m in r.stderr for m in NETZFEHLER):
+            print(f"pip-Fehler: {letzte}")
+            return False
+        if versuch == 2:
+            raise PaketquelleWeg(letzte)
+        print("Paketquelle antwortet nicht, neuer Versuch in 20 s")
+        time.sleep(20)
 
 
 def pip_sicherstellen():
@@ -106,8 +155,24 @@ def pip_sicherstellen():
     return subprocess.run([sys.executable, "-m", "pip", "--version"], capture_output=True).returncode == 0
 
 
+def versionen(pakete):
+    code = ("import importlib.metadata as md\nfor n in %r:\n"
+            "    try: print(n, md.version(n))\n    except Exception: print(n, '?')\n") % sorted({name_von(p) for p in pakete})
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    return ", ".join(r.stdout.split("\n")[:-1]) or "?"
+
+
 def main():
     os.environ.setdefault("PIP_ROOT_USER_ACTION", "ignore")
+    os.environ.setdefault("PIP_RETRIES", "2")
+    try:
+        einrichten()
+    except PaketquelleWeg as fehler:
+        print(f"Einrichtung fehlgeschlagen: Paketquelle nicht erreichbar ({fehler})")
+        sys.exit(1)
+
+
+def einrichten():
     pakete = sys.argv[1:] or pakete_aus(ROOT / "requirements.txt")
     if not pakete:
         sys.exit("Keine Pakete angegeben und keine requirements.txt gefunden.")
@@ -115,11 +180,12 @@ def main():
     google = any(m.startswith("google.") for m in namen)
     if google:
         pakete = [p for p in pakete if modul(p) not in (modul(k) for k in KRYPTO)] + KRYPTO
-    module = sorted({modul(p) for p in pakete})
+    pakete = list(dict.fromkeys(pakete))  # doppelte raus, Reihenfolge bleibt
     version = f"Python {sys.version.split()[0]} ({sys.executable})"
 
-    fehler = pruefen(module, google)
+    fehler = pruefen(pakete, google)
     if fehler is None:
+        print(f"Versionen: {versionen(pakete)}")
         print(f"Python bereit: {version}, nichts zu installieren")
         return
 
@@ -132,17 +198,18 @@ def main():
     if google:
         pip("--ignore-installed", *KRYPTO)
     pip(*pakete)
-    fehler = pruefen(module, google)
+    fehler = pruefen(pakete, google)
 
     # Runde 2: alles frisch, ohne Cache, egal was schon da ist
     if fehler is not None:
         print(f"Immer noch: {fehler}. Installiere alles neu")
         pip("--ignore-installed", "--force-reinstall", "--no-cache-dir", *pakete)
-        fehler = pruefen(module, google)
+        fehler = pruefen(pakete, google)
 
     if fehler is not None:
         print(f"Einrichtung fehlgeschlagen ({version}): {fehler}")
         sys.exit(1)
+    print(f"Versionen: {versionen(pakete)}")
     print(f"Python bereit: {version}, repariert")
 
 
