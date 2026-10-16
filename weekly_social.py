@@ -386,9 +386,7 @@ def sperre_setzen(ip, sh, sid, schluessel, drive_id):
     werte = {"Art": "wochenpost", "Schlüssel": schluessel, "Titel": f"Wochenübersicht {schluessel}",
              "Verarbeitet am": f"{jetzt:%Y-%m-%d %H:%M}", "Drive-Datei": drive_id or "",
              "Facebook-ID": f"läuft seit {jetzt:%Y-%m-%d %H:%M}", "Instagram-ID": "wartet"}
-    sh.values().append(spreadsheetId=sid, range=f"{ip.TAB}!A:{ip._buchstabe(len(kopf) - 1)}",
-                       valueInputOption="RAW", insertDataOption="INSERT_ROWS",
-                       body={"values": [[werte.get(k, "") for k in kopf]]}).execute()
+    ip.zeile_anhaengen(sh, sid, kopf, [werte.get(k, "") for k in kopf])
     for nr, e, kopf in ip.lade_protokoll(sh, sid):
         if e.get("Art") == "wochenpost" and e.get("Schlüssel") == schluessel:
             return lambda spalte, wert: ip.schreibe(sh, sid, kopf, nr, spalte, wert)

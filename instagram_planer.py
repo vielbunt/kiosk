@@ -78,7 +78,7 @@ def sheets():
     class Wiederholend(HttpRequest):  # wie postergenerator/google_dienste.py: 429/5xx bis zu 4 Mal
         def execute(self, http=None, num_retries=0):
             if num_retries == 0 and self.methodId != "sheets.spreadsheets.values.append":
-                num_retries = 4  # append nie, sonst droht eine doppelte Zeile
+                num_retries = 4  # append nie (siehe zeile_anhaengen), ein update auf feste Zellen ist wiederholbar
             return super().execute(http=http, num_retries=num_retries)
 
     return build("sheets", "v4", credentials=creds, cache_discovery=False, requestBuilder=Wiederholend).spreadsheets()
@@ -94,9 +94,21 @@ def _buchstabe(index: int) -> str:
     return s
 
 
-def lade_protokoll(sh, sid):
+def zeile_anhaengen(sh, sid, kopf, zeile) -> None:
+    """Schreibt eine Zeile in die nächste freie Zeile ab Spalte A. Nie values.append: das sucht selbst eine
+    "Tabelle" und setzte neue Zeilen nach nur geleerten Zeilen ab Spalte O ab (Ausfall 16.10.2026)."""
+    n = len(sh.values().get(spreadsheetId=sid, range=f"{TAB}!A:A").execute().get("values", [])) + 1
+    sh.values().update(spreadsheetId=sid, range=f"{TAB}!A{n}:{_buchstabe(len(kopf) - 1)}{n}",
+                       valueInputOption="RAW", body={"values": [zeile]}).execute()
+
+
+def lade_protokoll(sh, sid, warnen=False):
     werte = sh.values().get(spreadsheetId=sid, range=f"{TAB}!A:Z").execute().get("values", [])
     kopf = werte[0]
+    if warnen:
+        for nr, zeile in enumerate(werte[1:], start=2):
+            if not (zeile[0] if zeile else "").strip() and any(str(z).strip() for z in zeile[1:]):
+                print(f"⚠️ Automatik Zeile {nr} hat Daten, aber keine Art in Spalte A")
     for nr, zeile in enumerate(werte[1:], start=2):
         zeile = zeile + [""] * (len(kopf) - len(zeile))
         yield nr, dict(zip(kopf, zeile)), kopf
@@ -294,9 +306,7 @@ def wochenpost_pruefen(sh, sid, jetzt, zeilen) -> None:
         werte = {"Art": "wochenpost", "Schlüssel": schluessel, "Titel": f"Wochenübersicht {schluessel}",
                  "Verarbeitet am": f"{jetzt:%Y-%m-%d %H:%M}", "Facebook-ID": "verpasst [gemeldet]",
                  "Instagram-ID": "verpasst [gemeldet]"}
-        sh.values().append(spreadsheetId=sid, range=f"{TAB}!A:{_buchstabe(len(kopf) - 1)}",
-                           valueInputOption="RAW", insertDataOption="INSERT_ROWS",
-                           body={"values": [[werte.get(k, "") for k in kopf]]}).execute()
+        zeile_anhaengen(sh, sid, kopf, [werte.get(k, "") for k in kopf])
 
 
 def main():
@@ -310,7 +320,7 @@ def main():
     if not trocken and angehalten(sh, sid, jetzt):
         lebenszeichen_schreiben(sh, sid, jetzt)
         return
-    zeilen = list(lade_protokoll(sh, sid))
+    zeilen = list(lade_protokoll(sh, sid, warnen=True))
     for nr, e, kopf in zeilen:
         ig = e.get("Instagram-ID", "").strip()
         if e.get("Art") != "beitrag" or not e.get("Bilder"):
