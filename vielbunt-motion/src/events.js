@@ -50,7 +50,7 @@ export function parseICS(text, now = new Date()) {
       const v = line.slice(line.indexOf(':') + 1);
       if (line.startsWith('SUMMARY')) cur.summary = unescape(v);
       else if (line.startsWith('LOCATION')) cur.location = unescape(v);
-      else if (line.startsWith('DTSTART')) { cur.start = parseDate(v); cur.tz = line.includes('TZID'); }
+      else if (line.startsWith('DTSTART')) { cur.start = parseDate(v); cur.tz = line.includes('TZID'); cur.local = !v.endsWith('Z'); }
       else if (line.startsWith('DTEND')) cur.end = parseDate(v);
       else if (line.startsWith('RRULE:')) cur.rrule = v;
       else if (line.startsWith('EXDATE')) (cur.ex = cur.ex || []).push(...v.split(',').map((d) => parseDate(d).getTime()));
@@ -76,10 +76,10 @@ export function parseICS(text, now = new Date()) {
       try {
         const s = e.start;
         // rrule rechnet in UTC, Ortszeit deshalb als "naive UTC" durchreichen (wie im Kiosk)
-        const dt = e.tz ? new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate(), s.getHours(), s.getMinutes(), s.getSeconds())) : s;
+        const dt = e.local ? new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate(), s.getHours(), s.getMinutes(), s.getSeconds())) : s;
         const rule = rrulestr(e.rrule, { dtstart: dt });
         for (const n of rule.between(day0, until, true)) {
-          const d = e.tz ? new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), n.getUTCHours(), n.getUTCMinutes()) : n;
+          const d = e.local ? new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), n.getUTCHours(), n.getUTCMinutes()) : n;
           if (e.ex && e.ex.includes(d.getTime())) continue;
           if (moved[e.uid] && moved[e.uid].includes(d.getTime())) continue;
           out.push({ summary: e.summary, location: e.location, intern: e.intern, start: d });
