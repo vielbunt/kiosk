@@ -255,7 +255,7 @@
             else if (cur) {
                 const v = line.slice(line.indexOf(':') + 1);
                 if (line.startsWith('SUMMARY')) cur.summary = BK.clean(unescapeICS(v));
-                else if (line.startsWith('DTSTART')) { cur.start = parseICSDate(v); cur.tz = line.includes('TZID'); }
+                else if (line.startsWith('DTSTART')) { cur.start = parseICSDate(v); cur.tz = line.includes('TZID'); cur.local = !v.endsWith('Z'); }
                 else if (line.startsWith('DTEND')) cur.end = parseICSDate(v);
                 else if (line.startsWith('RRULE:')) cur.rrule = v;
                 else if (line.startsWith('EXDATE')) (cur.ex = cur.ex || []).push(...v.split(',').map(d => parseICSDate(d).getTime()));
@@ -285,11 +285,13 @@
             if (!window.rrule) continue;
             try {
                 const s = e.start;
-                // rrule rechnet in UTC, Ortszeit deshalb als "naive UTC" durchreichen (wie im grossen Kiosk)
-                const dt = e.tz ? new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate(), s.getHours(), s.getMinutes(), s.getSeconds())) : s;
+                // rrule rechnet in UTC, Ortszeit deshalb als "naive UTC" durchreichen (wie im grossen Kiosk).
+                // Gilt auch fuer Ganztagestermine (VALUE=DATE): sonst landet die Serie nach der Zeitumstellung
+                // im Oktober um 23 Uhr am Vortag (Intersex Awareness Day stand fuer Sonntag 23 Uhr).
+                const dt = e.local ? new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate(), s.getHours(), s.getMinutes(), s.getSeconds())) : s;
                 const skip = (e.uid && moved[e.uid]) || [];
                 for (const n of window.rrule.rrulestr(e.rrule, { dtstart: dt }).between(day0, until, true)) {
-                    const d = e.tz ? new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), n.getUTCHours(), n.getUTCMinutes(), n.getUTCSeconds()) : n;
+                    const d = e.local ? new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), n.getUTCHours(), n.getUTCMinutes(), n.getUTCSeconds()) : n;
                     const t = d.getTime();
                     if ((e.ex && e.ex.includes(t)) || skip.includes(t)) continue;
                     out.push({ summary: e.summary, start: d, end: e.end ? new Date(d.getTime() + (e.end - e.start)) : null });

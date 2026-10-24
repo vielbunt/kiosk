@@ -689,11 +689,11 @@
                     } else if (line.startsWith('DTSTART')) {
                         const dateStr = line.split(':').pop();
                         currentEvent.start = parseICSDate(dateStr);
-                        // Track whether this DTSTART carries a TZID (local-time event).
+                        // Track whether this DTSTART is local time (no trailing Z: TZID, floating or all-day VALUE=DATE).
                         // rrule.js v2.x uses getUTC* internally, so DST shifts cause
                         // a 1-hour error for events defined in a different DST season.
                         // We fix this with the naive-UTC round-trip in the rrule path.
-                        currentEvent.dtStartHasTzid = line.includes('TZID');
+                        currentEvent.dtStartLocal = !dateStr.endsWith('Z');
                     } else if (line.startsWith('DTEND')) {
                         const dateStr = line.split(':').pop();
                         currentEvent.end = parseICSDate(dateStr);
@@ -765,12 +765,12 @@
                         const duration = e.end ? (e.end.getTime() - e.start.getTime()) : 0;
 
                         // rrule.js v2.x uses getUTC* on dtstart, ignoring the local DST offset.
-                        // For TZID events (local Berlin time), we pass a "naive UTC" dtstart —
+                        // For local-time events (TZID, floating, all-day), we pass a "naive UTC" dtstart —
                         // i.e. treat the local HH:MM as if it were UTC — so rrule preserves the
                         // intended time-of-day across DST transitions.
                         // After .between(), we convert each naive-UTC instance back to local time.
                         const s = e.start;
-                        const dtstart = e.dtStartHasTzid
+                        const dtstart = e.dtStartLocal
                             ? new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate(),
                                                s.getHours(), s.getMinutes(), s.getSeconds()))
                             : s;
@@ -781,7 +781,7 @@
 
                         instances.forEach(naiveDate => {
                             // Convert naive-UTC back to a real local-time Date for TZID events.
-                            const date = e.dtStartHasTzid
+                            const date = e.dtStartLocal
                                 ? new Date(naiveDate.getUTCFullYear(), naiveDate.getUTCMonth(),
                                            naiveDate.getUTCDate(), naiveDate.getUTCHours(),
                                            naiveDate.getUTCMinutes(), naiveDate.getUTCSeconds())
