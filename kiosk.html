@@ -679,7 +679,7 @@
                     }
                 } else if (currentEvent) {
                     if (line.startsWith('SUMMARY:')) {
-                        currentEvent.summary = line.substring(8);
+                        currentEvent.summary = line.substring(8).replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1');
                     } else if (line.startsWith('DTSTART')) {
                         const dateStr = line.split(':').pop();
                         currentEvent.start = parseICSDate(dateStr);
