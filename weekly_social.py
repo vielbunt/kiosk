@@ -11,9 +11,9 @@ Steps:
   4. Post socialmedia.png to the vielbunt Instagram account
 
 Instagram nutzt die Wiederholung aus instagram_planer.py: vorübergehende Fehler (z. B. "Das Herunterladen
-der Medien dauert zu lange") werden im selben Lauf nach 1 und 3 Minuten nochmal versucht. Klappt es dann
+der Medien dauert zu lange") werden im selben Lauf nach 30 Sekunden nochmal versucht. Klappt es dann
 immer noch nicht, steht "wiederholen n/3" in der Wochenpost-Zeile, und der nächste Start dieses Skripts
-(Nachholfenster oder von Hand) postet nur noch Instagram, Facebook nicht nochmal.
+(Nachholversuch der Routine um 10 Uhr oder von Hand) postet nur noch Instagram, Facebook nicht nochmal.
 
   python3 weekly_social.py --nur-poster   → only steps 1 and 2, nothing gets posted
   python3 weekly_social.py --probe        → Probelauf: Bilder und PDF bauen, Drive- und Meta-Zugang

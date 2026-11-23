@@ -17,9 +17,10 @@ Zeit) werden einmal gemeldet und als "verpasst" vermerkt, nicht nachgeholt. Soll
 raus, die Zelle "Instagram-ID" leeren und "Geplant für"/"Uhrzeit" auf einen neuen Termin setzen.
 
 Vorübergehende Instagram-Fehler (z. B. "Das Herunterladen der Medien dauert zu lange", Subcode 2207003,
-am 23.11.2026) werden wiederholt: im selben Lauf noch zweimal nach 1 und 3 Minuten, danach steht
-"wiederholen n/3" in "Instagram-ID" und die nächsten Läufe versuchen es nochmal, auch wenn die
-geplante Zeit dann länger als 3 Stunden her ist. Wiederholt wird nur, solange sicher noch nichts
+am 23.11.2026) werden wiederholt: im selben Lauf einmal nach 30 Sekunden, danach steht "wiederholen n/3"
+in "Instagram-ID" und die nächsten Läufe (stündlich, siehe cloud/routinen.md im postergenerator) versuchen
+es nochmal, auch wenn die geplante Zeit dann länger als 3 Stunden her ist. Längere Pausen im selben Lauf
+gehen nicht, die Routine bricht den Befehl nach 10 Minuten ab und die Zeile bliebe auf "läuft seit". Wiederholt wird nur, solange sicher noch nichts
 veröffentlicht ist (Fehler vor oder als klare Ablehnung von media_publish).
 
 Zugangsdaten aus der Umgebung: META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID,
@@ -187,7 +188,7 @@ class InstagramVoruebergehend(RuntimeError):
 # 2207053 unbekannter Upload-Fehler
 VORUEBERGEHEND_SUBCODES = {2207001, 2207003, 2207008, 2207020, 2207027, 2207032, 2207053}
 VORUEBERGEHEND_CODES = {-2, -1, 1, 2, 9007}  # Timeout, unbekannt, Dienst gerade weg, Medien nicht bereit
-WIEDERHOLEN_IM_LAUF = (60, 180)  # Sekunden Pause vor dem 2. und 3. Versuch
+WIEDERHOLEN_IM_LAUF = (30,)  # Sekunden Pause vor dem 2. Versuch; kurz halten, die Routine bricht nach 10 Minuten ab
 WIEDERHOLEN_LAEUFE = 3  # so viele Läufe insgesamt, dann "Fehler ... [gemeldet]"
 
 
@@ -275,7 +276,7 @@ def veroeffentlichen(bilder: list[str], text: str, token: str, konto: str, titel
 
 
 def veroeffentlichen_mit_wiederholung(bilder, text, token, konto, titel="") -> str:
-    """Wie veroeffentlichen, versucht es bei vorübergehenden Fehlern im selben Lauf noch zweimal."""
+    """Wie veroeffentlichen, versucht es bei vorübergehenden Fehlern im selben Lauf nochmal (WIEDERHOLEN_IM_LAUF)."""
     for pause in WIEDERHOLEN_IM_LAUF + (None,):
         try:
             return veroeffentlichen(bilder, text, token, konto, titel)
