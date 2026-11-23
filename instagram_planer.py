@@ -226,7 +226,8 @@ def _post(pfad: str, token: str, **daten) -> str:
         r = requests.post(f"{GRAPH}/{pfad}", data=daten, headers=_auth(token), timeout=60)
     except (requests.ConnectionError, requests.Timeout) as fehler:
         if veroeffentlicht:  # Antwort verloren, der Post kann trotzdem draußen sein: nicht wiederholen
-            raise RuntimeError(f"Keine Antwort von media_publish: {_sauber(fehler)}") from None
+            raise RuntimeError(f"UNKLAR: keine Antwort von media_publish, der Post ist eventuell trotzdem online "
+                               f"({_sauber(fehler)})") from None
         raise InstagramVoruebergehend(f"Meta nicht erreichbar: {_sauber(fehler)}") from None
     if not r.ok:
         if veroeffentlicht:  # 5xx ist hier unklar (vielleicht doch gepostet), eine 4xx-Ablehnung nicht

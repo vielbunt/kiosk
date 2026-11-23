@@ -10,6 +10,11 @@ Steps:
   3. Post socialmedia.png to the vielbunt Facebook page
   4. Post socialmedia.png to the vielbunt Instagram account
 
+Instagram nutzt die Wiederholung aus instagram_planer.py: vorübergehende Fehler (z. B. "Das Herunterladen
+der Medien dauert zu lange") werden im selben Lauf nach 1 und 3 Minuten nochmal versucht. Klappt es dann
+immer noch nicht, steht "wiederholen n/3" in der Wochenpost-Zeile, und der nächste Start dieses Skripts
+(Nachholfenster oder von Hand) postet nur noch Instagram, Facebook nicht nochmal.
+
   python3 weekly_social.py --nur-poster   → only steps 1 and 2, nothing gets posted
   python3 weekly_social.py --probe        → Probelauf: Bilder und PDF bauen, Drive- und Meta-Zugang
                                             prüfen, aber nix hochladen und nix posten
@@ -18,12 +23,13 @@ Steps:
 import os
 import re
 import sys
-import time
 import subprocess
 from pathlib import Path
 
 import requests
 from datetime import datetime
+
+from instagram_planer import BERLIN, InstagramVoruebergehend, WIEDERHOLEN_LAEUFE
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 KIOSK_DIR       = Path(__file__).parent
@@ -192,46 +198,11 @@ def step_post_instagram():
             fields="id",
             supportsAllDrives=True,
         ).execute()
-        page_token = _page_access_token()
-        # Create media container
-        container = requests.post(
-            f"{GRAPH}/{INSTAGRAM_ACCOUNT_ID}/media",
-            data={"image_url": image_url, "caption": CAPTION, "access_token": page_token},
-            timeout=(10, 180),
-        )
-        if not container.ok:
-            print(f"    ✗ Instagram container error {container.status_code}: {container.text}")
-        container.raise_for_status()
-        creation_id = container.json()["id"]
-
-        # Wait for Instagram to finish processing the image before publishing
-        for attempt in range(24):  # up to ~2 minutes
-            status_r = requests.get(
-                f"{GRAPH}/{creation_id}",
-                params={"fields": "status_code"},
-                headers={"Authorization": f"Bearer {page_token}"},
-                timeout=(10, 30),
-            )
-            status_r.raise_for_status()
-            status_code = status_r.json().get("status_code")
-            if status_code == "FINISHED":
-                break
-            if status_code == "ERROR":
-                sys.exit(f"    ✗ Instagram container processing failed: {status_r.text}")
-            time.sleep(5)
-        else:
-            sys.exit("    ✗ Instagram container did not finish processing within 2 minutes.")
-
-        # Publish
-        publish = requests.post(
-            f"{GRAPH}/{INSTAGRAM_ACCOUNT_ID}/media_publish",
-            data={"creation_id": creation_id, "access_token": page_token},
-            timeout=(10, 180),
-        )
-        if not publish.ok:
-            print(f"    ✗ Instagram publish error {publish.status_code}: {publish.text}")
-        publish.raise_for_status()
-        ig_id = publish.json().get("id")
+        # Container anlegen, warten, veröffentlichen: wie bei den geplanten Beiträgen, mit Alt-Text und
+        # Wiederholung bei vorübergehenden Fehlern (wirft InstagramVoruebergehend, wenn es nicht klappt)
+        from instagram_planer import veroeffentlichen_mit_wiederholung
+        ig_id = veroeffentlichen_mit_wiederholung(
+            [image_url], CAPTION, _page_access_token(), INSTAGRAM_ACCOUNT_ID, "Termine der nächsten Woche")
         print(f"    ✓ Instagram post created (id={ig_id})\n")
         return ig_id
 
@@ -358,7 +329,8 @@ def _plan():
 
 
 def sperre_pruefen(ip, sh, sid, schluessel):
-    """Exit 3, wenn diese Woche schon (oder halb) gepostet wurde, Exit 1 wenn die Sperre nicht lesbar ist."""
+    """Exit 3, wenn diese Woche schon (oder halb) gepostet wurde, Exit 1 wenn die Sperre nicht lesbar ist.
+    Wartet nur noch Instagram auf eine Wiederholung, kommt (Versuche bisher, Schreibfunktion) zurück."""
     try:
         zeilen = list(ip.lade_protokoll(sh, sid))
     except Exception as e:
@@ -368,6 +340,10 @@ def sperre_pruefen(ip, sh, sid, schluessel):
         if e.get("Art") != "wochenpost" or e.get("Schlüssel") != schluessel:
             continue
         zustand = f"Facebook {e.get('Facebook-ID') or '?'}, Instagram {e.get('Instagram-ID') or '?'}"
+        treffer = re.match(r"wiederholen (\d+)", e.get("Instagram-ID", ""))
+        if treffer:
+            print(f"Wochenpost {schluessel}: Facebook ist schon draußen, Instagram wird nochmal versucht.")
+            return int(treffer.group(1)), lambda spalte, wert, nr=nr, kopf=kopf: ip.schreibe(sh, sid, kopf, nr, spalte, wert)
         offen = [sp for sp in ("Facebook-ID", "Instagram-ID")
                  if e.get(sp, "").startswith(("läuft", "Fehler", "wartet")) and "[gemeldet]" not in e.get(sp, "")]
         if offen:
@@ -378,6 +354,7 @@ def sperre_pruefen(ip, sh, sid, schluessel):
         else:
             print(f"Wochenpost {schluessel} schon erledigt ({zustand}), nichts zu tun.")
         sys.exit(3)
+    return None
 
 
 def sperre_setzen(ip, sh, sid, schluessel, drive_id):
@@ -394,11 +371,15 @@ def sperre_setzen(ip, sh, sid, schluessel, drive_id):
 
 
 def _schritt(name, funktion, *args):
-    """Führt einen Schritt aus, ohne dass sein Fehler die anderen verhindert. Liefert (ok, ergebnis)."""
+    """Führt einen Schritt aus, ohne dass sein Fehler die anderen verhindert. Liefert (ok, ergebnis),
+    ok ist None bei einem vorübergehenden Instagram-Fehler."""
     try:
         return True, funktion(*args)
     except KeyboardInterrupt:
         raise
+    except InstagramVoruebergehend as e:  # sicher noch nichts gepostet, ein späterer Start darf es nochmal versuchen
+        print(f"    ✗ {name} vorübergehend fehlgeschlagen, nichts gepostet: {_sauber(e)}")
+        return None, _sauber(e)[:150]
     except requests.ReadTimeout:
         print(f"    ✗ {name} UNKLAR: Meta hat nicht rechtzeitig geantwortet, der Beitrag ist eventuell trotzdem "
               "online. Erst auf der Seite nachsehen, dann gegebenenfalls nachholen.")
@@ -406,6 +387,46 @@ def _schritt(name, funktion, *args):
     except BaseException as e:  # auch sys.exit aus den Schritten
         print(f"    ✗ {name} fehlgeschlagen: {_sauber(e)}")
         return False, f"Fehler: {_sauber(e)[:150]}"
+
+
+def instagram_eintragen(setze, ok_ig, ig, versuche):
+    """Schreibt das Instagram-Ergebnis in die Sperrzeile, bei vorübergehenden Fehlern "wiederholen n/3"."""
+    jetzt = f"{datetime.now(BERLIN):%Y-%m-%d %H:%M}"
+    if ok_ig:
+        setze("Instagram-ID", ig)
+    elif ok_ig is None and versuche + 1 < WIEDERHOLEN_LAEUFE:
+        setze("Instagram-ID", f"wiederholen {versuche + 1}/{WIEDERHOLEN_LAEUFE} ({jetzt}): {ig}")
+        print(f"    ↻ Instagram wird beim nächsten Start nochmal versucht ({versuche + 1}/{WIEDERHOLEN_LAEUFE}). "
+              "Kommt keiner mehr, python3 weekly_social.py von Hand starten, Facebook wird nicht nochmal gepostet.")
+    elif ok_ig is None:
+        setze("Instagram-ID", f"Fehler {jetzt} nach {WIEDERHOLEN_LAEUFE} Läufen: {ig} [gemeldet]")
+        print(f"    ✗ Instagram auch nach {WIEDERHOLEN_LAEUFE} Läufen nicht geklappt, nichts gepostet.")
+    else:
+        setze("Instagram-ID", f"{ig} [gemeldet]")
+
+
+def nur_instagram(ip, sh, sid, versuche, setze):
+    """Nachholstart: Facebook ist schon gepostet, nur Instagram nochmal."""
+    try:
+        step_screenshots()
+        setze("Instagram-ID", f"läuft seit {datetime.now(ip.BERLIN):%Y-%m-%d %H:%M}")
+        ok_ig, ig = _schritt("Instagram", step_post_instagram)
+        instagram_eintragen(setze, ok_ig, ig, versuche)
+    finally:
+        lebenszeichen(ip, sh, sid)
+    print(f"\n{'✓' if ok_ig else '✗'} Instagram (Nachholversuch)")
+    if not ok_ig:
+        sys.exit(1)
+    print("✅  All done!")
+
+
+def lebenszeichen(ip, sh, sid):
+    try:
+        sh.values().update(spreadsheetId=sid, range="'Vorbereitung'!A9:B9", valueInputOption="RAW",
+                           body={"values": [["vielbunt weekly social zuletzt gelaufen",
+                                             f"{datetime.now(ip.BERLIN):%Y-%m-%d %H:%M}"]]}).execute()
+    except Exception as e:
+        print(f"(Lebenszeichen nicht geschrieben: {_sauber(e)})")
 
 
 def main():
@@ -428,7 +449,10 @@ def main():
         print("✅  Nur das Plakat gebaut, nichts gepostet (Automatik angehalten).")
         return
     schluessel = ip.wochenschluessel(datetime.now(ip.BERLIN))
-    sperre_pruefen(ip, sh, sid, schluessel)
+    wiederholung = sperre_pruefen(ip, sh, sid, schluessel)
+    if wiederholung:
+        nur_instagram(ip, sh, sid, *wiederholung)
+        return
     try:
         step_screenshots()  # ohne Bilder geht nichts, Fehler bricht ab
         ok_poster, drive_id = _schritt("Poster-Upload", step_upload_poster)
@@ -438,14 +462,9 @@ def main():
         setze("Facebook-ID", fb if ok_fb else f"{fb} [gemeldet]")
         setze("Instagram-ID", f"läuft seit {datetime.now(ip.BERLIN):%Y-%m-%d %H:%M}")
         ok_ig, ig = _schritt("Instagram", step_post_instagram)
-        setze("Instagram-ID", ig if ok_ig else f"{ig} [gemeldet]")
+        instagram_eintragen(setze, ok_ig, ig, 0)
     finally:
-        try:
-            sh.values().update(spreadsheetId=sid, range="'Vorbereitung'!A9:B9", valueInputOption="RAW",
-                               body={"values": [["vielbunt weekly social zuletzt gelaufen",
-                                                 f"{datetime.now(ip.BERLIN):%Y-%m-%d %H:%M}"]]}).execute()
-        except Exception as e:
-            print(f"(Lebenszeichen nicht geschrieben: {_sauber(e)})")
+        lebenszeichen(ip, sh, sid)
     print(f"\n{'✓' if ok_poster else '✗'} Poster  {'✓' if ok_fb else '✗'} Facebook  {'✓' if ok_ig else '✗'} Instagram")
     if not (ok_poster and ok_fb and ok_ig):
         sys.exit(1)
