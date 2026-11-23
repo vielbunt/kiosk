@@ -16,6 +16,12 @@ einmal gemeldet (danach steht "[gemeldet]" dahinter). Verpasste Posts (mehr als 
 Zeit) werden einmal gemeldet und als "verpasst" vermerkt, nicht nachgeholt. Soll ein Post doch noch
 raus, die Zelle "Instagram-ID" leeren und "Geplant für"/"Uhrzeit" auf einen neuen Termin setzen.
 
+Vorübergehende Instagram-Fehler (z. B. "Das Herunterladen der Medien dauert zu lange", Subcode 2207003,
+am 23.11.2026) werden wiederholt: im selben Lauf noch zweimal nach 1 und 3 Minuten, danach steht
+"wiederholen n/3" in "Instagram-ID" und die nächsten Läufe versuchen es nochmal, auch wenn die
+geplante Zeit dann länger als 3 Stunden her ist. Wiederholt wird nur, solange sicher noch nichts
+veröffentlicht ist (Fehler vor oder als klare Ablehnung von media_publish).
+
 Zugangsdaten aus der Umgebung: META_ACCESS_TOKEN, FACEBOOK_PAGE_ID, INSTAGRAM_ACCOUNT_ID,
 GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEETS_SPREADSHEET_ID. Lokal geht auch meta_config.py und
 postergenerator/scheduler/ (service_account.json, config.py).
@@ -171,22 +177,64 @@ def seiten_token() -> str:
         raise RuntimeError("Facebook-Seite nicht in /me/accounts gefunden")
 
 
+class InstagramVoruebergehend(RuntimeError):
+    """Instagram hat gerade gehakt und sicher noch nichts veröffentlicht, ein neuer Versuch ist gefahrlos."""
+
+
+# Subcodes, bei denen Instagram nur gerade nicht konnte (Meta markiert sie oft trotzdem is_transient=false):
+# 2207001 Serverfehler, 2207003 Herunterladen dauert zu lange, 2207008 vorübergehender Fehler,
+# 2207020 Medien abgelaufen, 2207027 Medien noch nicht fertig, 2207032 Anlegen fehlgeschlagen,
+# 2207053 unbekannter Upload-Fehler
+VORUEBERGEHEND_SUBCODES = {2207001, 2207003, 2207008, 2207020, 2207027, 2207032, 2207053}
+VORUEBERGEHEND_CODES = {-2, -1, 1, 2, 9007}  # Timeout, unbekannt, Dienst gerade weg, Medien nicht bereit
+WIEDERHOLEN_IM_LAUF = (60, 180)  # Sekunden Pause vor dem 2. und 3. Versuch
+WIEDERHOLEN_LAEUFE = 3  # so viele Läufe insgesamt, dann "Fehler ... [gemeldet]"
+
+
+def _voruebergehend(r: requests.Response) -> bool:
+    try:
+        fehler = r.json().get("error", {})
+    except ValueError:
+        return False
+    return bool(fehler.get("is_transient")) or fehler.get("error_subcode") in VORUEBERGEHEND_SUBCODES \
+        or fehler.get("code") in VORUEBERGEHEND_CODES
+
+
 def _warten(container_id: str, token: str) -> None:
+    # alles hier passiert vor media_publish, ein Abbruch ist also immer gefahrlos wiederholbar
     for _ in range(36):  # bis zu 3 Minuten
-        r = requests.get(f"{GRAPH}/{container_id}", params={"fields": "status_code"}, headers=_auth(token), timeout=30)
+        try:
+            r = requests.get(f"{GRAPH}/{container_id}", params={"fields": "status_code,status"},
+                             headers=_auth(token), timeout=30)
+        except (requests.ConnectionError, requests.Timeout) as fehler:
+            raise InstagramVoruebergehend(f"Meta nicht erreichbar: {_sauber(fehler)}") from None
+        if r.status_code >= 500 or (not r.ok and _voruebergehend(r)):
+            raise InstagramVoruebergehend(f"Instagram-Fehler {r.status_code}: {r.text}")
         r.raise_for_status()
         status = r.json().get("status_code")
         if status == "FINISHED":
             return
-        if status == "ERROR":
-            raise RuntimeError(f"Instagram konnte das Bild nicht verarbeiten: {r.text}")
+        if status == "ERROR":  # meist Download- oder Verarbeitungsproblem bei Meta
+            raise InstagramVoruebergehend(f"Instagram konnte das Bild nicht verarbeiten: {r.text}")
         time.sleep(5)
-    raise RuntimeError("Instagram hat das Bild nicht innerhalb von 3 Minuten verarbeitet.")
+    raise InstagramVoruebergehend("Instagram hat das Bild nicht innerhalb von 3 Minuten verarbeitet.")
 
 
 def _post(pfad: str, token: str, **daten) -> str:
-    r = requests.post(f"{GRAPH}/{pfad}", data=daten, headers=_auth(token), timeout=60)
+    veroeffentlicht = pfad.endswith("/media_publish")
+    try:
+        r = requests.post(f"{GRAPH}/{pfad}", data=daten, headers=_auth(token), timeout=60)
+    except (requests.ConnectionError, requests.Timeout) as fehler:
+        if veroeffentlicht:  # Antwort verloren, der Post kann trotzdem draußen sein: nicht wiederholen
+            raise RuntimeError(f"Keine Antwort von media_publish: {_sauber(fehler)}") from None
+        raise InstagramVoruebergehend(f"Meta nicht erreichbar: {_sauber(fehler)}") from None
     if not r.ok:
+        if veroeffentlicht:  # 5xx ist hier unklar (vielleicht doch gepostet), eine 4xx-Ablehnung nicht
+            wiederholbar = r.status_code < 500 and _voruebergehend(r)
+        else:
+            wiederholbar = r.status_code >= 500 or _voruebergehend(r)
+        if wiederholbar:
+            raise InstagramVoruebergehend(f"Instagram-Fehler {r.status_code}: {r.text}")
         raise RuntimeError(f"Instagram-Fehler {r.status_code}: {r.text}")
     return r.json()["id"]
 
@@ -223,6 +271,18 @@ def veroeffentlichen(bilder: list[str], text: str, token: str, konto: str, titel
         container = _post(f"{konto}/media", token, media_type="CAROUSEL", children=",".join(kinder), caption=text)
     _warten(container, token)
     return _post(f"{konto}/media_publish", token, creation_id=container)
+
+
+def veroeffentlichen_mit_wiederholung(bilder, text, token, konto, titel="") -> str:
+    """Wie veroeffentlichen, versucht es bei vorübergehenden Fehlern im selben Lauf noch zweimal."""
+    for pause in WIEDERHOLEN_IM_LAUF + (None,):
+        try:
+            return veroeffentlichen(bilder, text, token, konto, titel)
+        except InstagramVoruebergehend as fehler:
+            if pause is None:
+                raise
+            print(f"    ↻ {_sauber(fehler)[:200]}. Neuer Versuch in {pause} s.")
+            time.sleep(pause)
 
 
 # ── Ablauf ─────────────────────────────────────────────────────────────────
@@ -332,7 +392,11 @@ def main():
                       "und die Zelle von Hand leeren, falls nochmal gepostet werden soll.")
                 schreibe(sh, sid, kopf, nr, "Instagram-ID", f"{ig} [gemeldet]")
             continue
-        if ig:
+        versuche = 0  # wie viele Läufe es schon vergeblich versucht haben
+        if ig.startswith("wiederholen"):
+            treffer = re.match(r"wiederholen (\d+)", ig)
+            versuche = int(treffer.group(1)) if treffer else 1
+        elif ig:
             continue
         try:
             geplant = datetime.strptime(f"{e['Geplant für']} {e.get('Uhrzeit') or '09:00'}", "%Y-%m-%d %H:%M").replace(tzinfo=BERLIN)
@@ -341,7 +405,7 @@ def main():
             continue
         if jetzt < geplant:
             continue
-        if jetzt - geplant > SPAETESTENS:
+        if not versuche and jetzt - geplant > SPAETESTENS:
             print(f"⚠️  Verpasst: {e['Titel']} war für {geplant:%d.%m. %H:%M} geplant. Nicht nachgeholt.")
             if not trocken:  # vermerken, damit es nur einmal gemeldet wird
                 schreibe(sh, sid, kopf, nr, "Instagram-ID", f"verpasst (geplant {geplant:%d.%m. %H:%M})")
@@ -369,7 +433,19 @@ def main():
 
         schreibe(sh, sid, kopf, nr, "Instagram-ID", f"läuft seit {jetzt:%Y-%m-%d %H:%M}")
         try:
-            ig_id = veroeffentlichen(bilder, e.get("Text", ""), token, konto, e.get("Titel", ""))
+            ig_id = veroeffentlichen_mit_wiederholung(bilder, e.get("Text", ""), token, konto, e.get("Titel", ""))
+        except InstagramVoruebergehend as fehler:
+            if versuche + 1 < WIEDERHOLEN_LAEUFE:
+                schreibe(sh, sid, kopf, nr, "Instagram-ID", f"wiederholen {versuche + 1}/{WIEDERHOLEN_LAEUFE} "
+                         f"({jetzt:%Y-%m-%d %H:%M}): {_sauber(fehler)[:200]}")
+                print(f"    ↻ {_sauber(fehler)[:300]}. Noch nichts gepostet, der nächste Lauf versucht es wieder "
+                      f"({versuche + 1}/{WIEDERHOLEN_LAEUFE}).")
+                continue
+            schreibe(sh, sid, kopf, nr, "Instagram-ID",
+                     f"Fehler {jetzt:%Y-%m-%d %H:%M} nach {WIEDERHOLEN_LAEUFE} Läufen: {_sauber(fehler)[:200]} [gemeldet]")
+            print(f"    ✗ {_sauber(fehler)}. Auch nach {WIEDERHOLEN_LAEUFE} Läufen nicht geklappt, nichts gepostet. "
+                  "Zum Wiederholen die Zelle Instagram-ID leeren und Geplant für/Uhrzeit neu setzen.")
+            continue
         except Exception as fehler:
             # gleich als gemeldet markieren, sonst meldet der nächste Start dieselbe Zeile nochmal
             schreibe(sh, sid, kopf, nr, "Instagram-ID", f"Fehler {jetzt:%Y-%m-%d %H:%M}: {_sauber(fehler)[:200]} [gemeldet]")
