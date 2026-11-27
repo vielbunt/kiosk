@@ -226,7 +226,7 @@
             // Fallback-Slides: leere (Karte ohne Getraenke, Bild ohne Bild) fallen weg
             const probe = BUILD[s.typ](s);
             if (!probe) continue;
-            items.push({ dur, pre: a ? [a.src] : [], node: () => frame(BUILD[s.typ](s)) });
+            items.push({ dur, pre: a ? [a.src] : [], bildOptional: true, node: () => frame(BUILD[s.typ](s)) });
         }
         player.setList(items.length ? items : [{ ph: true, dur: 10000, node: () => frame(BUILD.motion({ z: [''] })) }]);
     }

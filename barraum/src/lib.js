@@ -53,16 +53,27 @@
         return n;
     };
 
-    BK.preload = function (urls, ms = 8000) {
+    // Laedt Bilder vor. Ergebnis: je URL true (geladen) oder false (Fehler oder nach ms noch nicht da).
+    // Der Pi haengt im WLAN manchmal, darum großzuegig warten; der vorige Slide bleibt so lange stehen.
+    BK.preload = function (urls, ms = 25000) {
         return Promise.all(urls.map(url => new Promise(resolve => {
             const img = new Image();
-            const done = () => resolve();
-            img.onload = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(done);
-            img.onerror = done;
-            setTimeout(done, ms);
+            let fertig = false;
+            const done = ok => { if (!fertig) { fertig = true; resolve(ok); } };
+            img.onload = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(() => done(true));
+            img.onerror = () => done(false);
+            setTimeout(() => done(false), ms);
             img.src = url;
         })));
     };
+
+    // Bild, das nicht laedt, ausblenden statt das Kaputt-Symbol auf rosa Grund zu zeigen
+    function bild(src) {
+        const i = el('img');
+        i.onerror = () => i.remove();
+        i.src = src;
+        return i;
+    }
 
     // ---------- Sheet ----------
 
@@ -422,7 +433,7 @@
 
     BK.pics = function (images) {
         const wrap = el('div', 'sharepics' + (images.length === 1 ? ' single' : ''));
-        for (const src of images) { const i = el('img'); i.src = src; wrap.appendChild(i); }
+        for (const src of images) wrap.appendChild(bild(src));
         return wrap;
     };
 
@@ -452,8 +463,7 @@
     };
     BK.fullImage = function (src) {
         const w = el('div', 'sharepics single');
-        const i = el('img'); i.src = BK.imgUrl(src);
-        w.appendChild(i);
+        w.appendChild(bild(BK.imgUrl(src)));
         return w;
     };
 
@@ -512,10 +522,12 @@
 
     // ---------- Abspielen ----------
 
-    // Eine Liste aus Eintraegen { dur: ms, node: () => Element | Promise<Element>, src?: Video, pre?: [Bild-URLs] }.
+    // Eine Liste aus Eintraegen { dur: ms, node: () => Element | Promise<Element>, src?: Video, pre?: [Bild-URLs],
+    // bildOptional?: true }. Laedt keins der pre-Bilder, wird der Slide ausgelassen, ausser bildOptional ist gesetzt
+    // (Slides mit eigenem Text, die auch ohne Bild Sinn ergeben).
     // Immer nur ein Slide im DOM. setList() tauscht die Liste, ohne den laufenden Slide zu unterbrechen.
     BK.player = function (stage) {
-        let list = [], pos = 0, timer = null, running = false;
+        let list = [], pos = 0, timer = null, running = false, uebersprungen = 0;
         const api = {
             // ph: true markiert Platzhalter-Slides, die beim ersten echten Stand sofort abgeloest werden
             setList(l) {
@@ -561,11 +573,28 @@
                         const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : { totalVideoFrames: 0, droppedVideoFrames: 0 };
                         BK.report('clip=' + encodeURIComponent(src) + '&frames=' + q.totalVideoFrames + '&dropped=' + q.droppedVideoFrames);
                     });
+                    uebersprungen = 0;
                     show(v);
                     BK.report('video=' + encodeURIComponent(src) + '&page=' + location.pathname.split('/').pop());
                     timer = setTimeout(next, item.dur || 90000);
                 } else {
-                    if (item.pre && item.pre.length) await BK.preload(item.pre);
+                    if (item.pre && item.pre.length) {
+                        const ok = await BK.preload(item.pre);
+                        if (!item.bildOptional && !ok.some(Boolean)) {
+                            // kein einziges Bild da (Netz weg oder zu langsam): Slide auslassen, weiter mit Terminen und Clips.
+                            // Nur wenn ALLE Slides der Liste hintereinander ausfallen (es gibt nur Bild-Slides), kurz Pause
+                            // mit Hinweis, damit der Pi nicht im Kreis laedt.
+                            console.warn('Bilder nicht geladen, Slide ausgelassen:', item.pre);
+                            uebersprungen++;
+                            if (uebersprungen >= list.length) {
+                                uebersprungen = 0;
+                                show(BK.msg('Bilder laden gerade nicht.', 'Mehr auf vielbunt.org'));
+                                timer = setTimeout(step, 30000);
+                            } else timer = setTimeout(step, 50);
+                            return;
+                        }
+                    }
+                    uebersprungen = 0;
                     const node = await item.node();
                     show(node);
                     BK.report('slide=' + encodeURIComponent((node.className || '').toString()) + '&page=' + location.pathname.split('/').pop());

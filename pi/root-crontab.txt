@@ -1,0 +1,7 @@
+# Optionaler WLAN-Waechter fuer die Root-Crontab des Pi im Barraum (sudo crontab -e).
+# Stand 27.11.2026 NICHT eingerichtet (sudo crontab -l ist leer).
+# WLAN-Waechter: ab 10 Minuten Laufzeit alle 5 Minuten pruefen, ob wlan0 da ist.
+# Fehlt es, WLAN-Modul neu laden und ins Log schreiben (journalctl -t wlan-waechter). Kein Neustart.
+# Wichtig: volle Pfade. cron hat nur PATH=/usr/bin:/bin, ip und modprobe liegen in /usr/sbin.
+# (Die erste Fassung ohne volle Pfade fand ip nicht und hat den Pi alle 5 Minuten neu gestartet.)
+*/5 * * * * [ $(cut -d. -f1 /proc/uptime) -gt 600 ] && ! /usr/sbin/ip link show wlan0 >/dev/null 2>&1 && { /usr/bin/logger -t wlan-waechter "wlan0 fehlt, lade Modul neu"; /usr/sbin/modprobe -r brcmfmac_wcc brcmfmac; /usr/sbin/modprobe brcmfmac; }

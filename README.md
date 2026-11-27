@@ -54,6 +54,17 @@ Im Ordner [`pi/`](pi/) liegt, was auf dem Pi außerhalb der Seite eingerichtet i
   `cage` einen Pfeil ins Bild. Einmal auf dem Pi als `kiosk-admin` ausführen.
 - Zusätzlich startet ein Cronjob von `kiosk-admin` den Kiosk jeden Tag um 11:30 neu:
   `30 11 * * * sudo systemctl restart kiosk.service`
+- `wifi-powersave-off.conf`: liegt unter `/etc/NetworkManager/conf.d/`, schaltet den WLAN-Stromsparmodus aus.
+- `root-crontab.txt`: optionaler WLAN-Wächter für `sudo crontab -e` (lädt das WLAN-Modul neu, mit vollen Pfaden, weil cron `/usr/sbin` nicht kennt). Stand 27.11.2026 **nicht** eingerichtet, erst beobachten, ob das WLAN ohne ihn stabil bleibt.
+- In `/boot/firmware/config.txt` steht am Ende `dtoverlay=disable-bt` (Bluetooth aus, entlastet den WLAN-Chip).
+
+### WLAN-Ausfall (27.11.2026)
+
+Die Firmware des WLAN-Chips ist abgestürzt (`dmesg | grep brcm`: „Firmware has halted or crashed“), danach
+fehlte `wlan0` ganz (`nmcli device status` zeigte nur `tailscale0` und `lo`). `modprobe` half nicht, erst ein
+Kaltstart (Strom ziehen, normaler Reboot reicht nicht). Seitdem: Stromsparmodus aus, Bluetooth aus. Eine erste Fassung
+des WLAN-Wächters ohne volle Pfade hat den Pi alle 5 Minuten neu gestartet und wurde wieder entfernt. `vcgencmd get_throttled` zeigte `0x0`, also keine Unterspannung. Taucht das Problem wieder auf,
+trotzdem ein stärkeres Netzteil (5 V, mind. 2,5 A) probieren.
 
 ## Social Media und Plakat
 
